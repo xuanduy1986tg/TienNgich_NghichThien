@@ -21,6 +21,7 @@ interface GameCanvasProps {
   currentMap: MapConfig;
   playerHp: number;
   playerMp: number;
+  equippedWeapon?: Item | null;
   activeMount: Mount | null;
   activeArtifact: Artifact | null;
   skills: Skill[];
@@ -38,6 +39,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
   currentMap,
   playerHp,
   playerMp,
+  equippedWeapon = null,
   activeMount,
   activeArtifact,
   skills,
@@ -58,6 +60,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     currentMap,
     playerHp,
     playerMp,
+    equippedWeapon,
     activeMount,
     activeArtifact,
     skills,
@@ -76,6 +79,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
       currentMap,
       playerHp,
       playerMp,
+      equippedWeapon,
       activeMount,
       activeArtifact,
       skills,
@@ -92,6 +96,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     currentMap,
     playerHp,
     playerMp,
+    equippedWeapon,
     activeMount,
     activeArtifact,
     skills,
@@ -114,13 +119,21 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     let hitstopTimer = 0;
     let cameraShake = 0;
 
-    // Player in-game world position
+    // Player in-game world position & detailed animation state
     const player = {
       x: 1000,
       y: 1000,
       vx: 0,
       vy: 0,
       angle: 0,
+      facing: 1 as 1 | -1,
+      walkDistance: 0,
+      footstepTimer: 0,
+      attackPhase: 'idle' as 'idle' | 'slash',
+      attackTimer: 0,
+      castPoseTimer: 0,
+      castSkillType: '',
+      hairSwayAngle: 0,
       dashCooldown: 0,
       invulnerableTimer: 0,
       autoAttackTimer: 0,
@@ -152,6 +165,26 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
       count: number;
       color: string;
       life: number;
+    }> = [];
+
+    // Footprints & Sword Slash Arcs for detailed animation
+    let footprints: Array<{
+      x: number;
+      y: number;
+      life: number;
+      maxLife: number;
+      size: number;
+      color: string;
+    }> = [];
+
+    let slashArcs: Array<{
+      x: number;
+      y: number;
+      angle: number;
+      radius: number;
+      life: number;
+      maxLife: number;
+      color: string;
     }> = [];
 
     // Ambient spells in world
@@ -287,7 +320,41 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     const triggerBasicSlash = (targetX: number, targetY: number) => {
       sound.playSlash();
       const angle = Math.atan2(targetY - player.y, targetX - player.x);
-      const projSpeed = 450;
+      const projSpeed = 460;
+
+      // Determine weapon visual profile based on equipped weapon
+      const eqWeapon = stateRef.current.equippedWeapon;
+      let weaponColor = '#38bdf8';
+      let arcRadius = 48;
+      if (eqWeapon) {
+        if (eqWeapon.name.includes('Huyết') || eqWeapon.rarity === 'co_bao') {
+          weaponColor = '#ef4444';
+          arcRadius = 50;
+        } else if (eqWeapon.name.includes('Cổ Thần') || eqWeapon.name.includes('Phủ') || eqWeapon.rarity === 'than_khi') {
+          weaponColor = '#f59e0b';
+          arcRadius = 58;
+        } else if (eqWeapon.name.includes('Trảm Tiên') || eqWeapon.rarity === 'tien') {
+          weaponColor = '#06b6d4';
+          arcRadius = 50;
+        }
+      }
+
+      // Update character attack animation and facing direction
+      player.angle = angle;
+      player.facing = Math.cos(angle) >= 0 ? 1 : -1;
+      player.attackPhase = 'slash';
+      player.attackTimer = 0.24;
+
+      // Add dynamic glowing sword slash crescent arc
+      slashArcs.push({
+        x: player.x,
+        y: player.y,
+        angle: angle,
+        radius: arcRadius,
+        life: 0.22,
+        maxLife: 0.22,
+        color: weaponColor,
+      });
 
       projectiles.push({
         id: `p_${Date.now()}_${Math.random()}`,
@@ -295,26 +362,26 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
         y: player.y + Math.sin(angle) * 25,
         vx: Math.cos(angle) * projSpeed,
         vy: Math.sin(angle) * projSpeed,
-        radius: 8,
+        radius: arcRadius > 50 ? 10 : 8,
         damage: stateRef.current.playerStats.atk,
-        color: '#38bdf8',
+        color: weaponColor,
         life: 0.65,
         maxLife: 0.65,
         fromPlayer: true,
       });
 
       // Slash particles
-      for (let i = 0; i < 5; i++) {
+      for (let i = 0; i < 6; i++) {
         particles.push({
           x: player.x,
           y: player.y,
-          vx: Math.cos(angle + (Math.random() - 0.5) * 0.8) * 120,
-          vy: Math.sin(angle + (Math.random() - 0.5) * 0.8) * 120,
-          size: 3 + Math.random() * 2,
-          color: '#38bdf8',
+          vx: Math.cos(angle + (Math.random() - 0.5) * 0.8) * 140,
+          vy: Math.sin(angle + (Math.random() - 0.5) * 0.8) * 140,
+          size: 3 + Math.random() * 3,
+          color: weaponColor,
           alpha: 1,
-          life: 0.3,
-          maxLife: 0.3,
+          life: 0.35,
+          maxLife: 0.35,
         });
       }
     };
@@ -355,6 +422,10 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
       const success = stateRef.current.onCastSkillTrigger(skill.id);
       if (!success) return;
 
+      // Trigger casting stance pose & visual effects
+      player.castPoseTimer = 0.45;
+      player.castSkillType = skill.effectType;
+
       cameraShake = 8;
 
       // Handle each specific skill VFX and logic
@@ -385,12 +456,20 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
           if (dist <= skill.radius) {
             const dmg = Math.round(stateRef.current.playerStats.atk * skill.damageMultiplier);
             m.hp -= dmg;
+            m.hitFlashTimer = 0.16;
             m.telegraphTimer = 0; // interrupt attack
+
+            // Violent knockback impulse away from player
+            const kAngle = Math.atan2(m.y - player.y, m.x - player.x);
+            m.vx += Math.cos(kAngle) * 260;
+            m.vy += Math.sin(kAngle) * 260;
 
             floatingTexts.push({
               id: `crit_${Date.now()}_${m.id}`,
               x: m.x,
               y: m.y - 30,
+              vx: (Math.random() - 0.5) * 60,
+              vy: -130,
               text: `CỰC CẢNH! -${dmg}`,
               color: '#ef4444',
               fontSize: 18,
@@ -399,12 +478,12 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
             });
 
             // Red sparks
-            for (let k = 0; k < 12; k++) {
+            for (let k = 0; k < 14; k++) {
               particles.push({
                 x: m.x,
                 y: m.y,
-                vx: (Math.random() - 0.5) * 280,
-                vy: (Math.random() - 0.5) * 280,
+                vx: (Math.random() - 0.5) * 300,
+                vy: (Math.random() - 0.5) * 300,
                 size: 3 + Math.random() * 4,
                 color: '#ef4444',
                 alpha: 1,
@@ -446,10 +525,16 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
             if (angleDiff < 0.35 || angleDiff > Math.PI * 2 - 0.35) {
               const dmg = Math.round(stateRef.current.playerStats.atk * skill.damageMultiplier);
               m.hp -= dmg;
+              m.hitFlashTimer = 0.15;
+              m.vx += Math.cos(beamAngle) * 220;
+              m.vy += Math.sin(beamAngle) * 220;
+
               floatingTexts.push({
                 id: `ft_fg_${m.id}_${Date.now()}`,
                 x: m.x,
                 y: m.y - 25,
+                vx: Math.cos(beamAngle) * 80,
+                vy: -110,
                 text: `-${dmg}`,
                 color: '#eab308',
                 fontSize: 16,
@@ -563,6 +648,27 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
           player.vx = (moveX / len) * speed;
           player.vy = (moveY / len) * speed;
           player.angle = Math.atan2(player.vy, player.vx);
+          if (Math.abs(player.vx) > 5) {
+            player.facing = player.vx > 0 ? 1 : -1;
+          }
+          player.walkDistance += speed * dt;
+          player.footstepTimer += speed * dt;
+
+          // Spawn glowing spiritual footstep ripples
+          if (player.footstepTimer >= 20) {
+            player.footstepTimer = 0;
+            const footSide = Math.sin(player.walkDistance * 0.16) > 0 ? 1 : -1;
+            const perpX = -Math.sin(player.angle) * 8 * footSide;
+            const perpY = Math.cos(player.angle) * 8 * footSide;
+            footprints.push({
+              x: player.x + perpX,
+              y: player.y + 16 + perpY,
+              life: 0.55,
+              maxLife: 0.55,
+              size: 5,
+              color: stateRef.current.currentRealm.badgeColor,
+            });
+          }
         } else {
           player.vx *= 0.8;
           player.vy *= 0.8;
@@ -570,6 +676,17 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
 
         player.x += player.vx * dt;
         player.y += player.vy * dt;
+
+        // Decrement attack and cast pose timers
+        if (player.attackTimer > 0) {
+          player.attackTimer -= dt;
+          if (player.attackTimer <= 0) {
+            player.attackPhase = 'idle';
+          }
+        }
+        if (player.castPoseTimer > 0) {
+          player.castPoseTimer -= dt;
+        }
 
         // Clamp inside world bounds
         player.x = Math.max(50, Math.min(WORLD_WIDTH - 50, player.x));
@@ -631,6 +748,12 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
                 const isCrit = Math.random() < stateRef.current.playerStats.critRate;
                 const dmg = isCrit ? Math.round(p.damage * 1.8) : p.damage;
                 m.hp -= dmg;
+                m.hitFlashTimer = 0.14;
+
+                // Knockback impulse from attack
+                const knockAngle = Math.atan2(m.y - player.y, m.x - player.x);
+                m.vx += Math.cos(knockAngle) * (isCrit ? 220 : 120);
+                m.vy += Math.sin(knockAngle) * (isCrit ? 220 : 120);
 
                 // Lifesteal
                 const healAmt = Math.round(dmg * stateRef.current.playerStats.lifesteal);
@@ -638,30 +761,32 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
                   stateRef.current.onHeal(healAmt, 0);
                 }
 
-                // Floating text
+                // Floating text with bounce trajectory
                 floatingTexts.push({
                   id: `ft_${Date.now()}_${Math.random()}`,
                   x: m.x,
                   y: m.y - 20,
+                  vx: (Math.random() - 0.5) * 70,
+                  vy: isCrit ? -140 : -100,
                   text: `${isCrit ? 'BẠO KÍCH! ' : ''}-${dmg}`,
                   color: isCrit ? '#f59e0b' : '#f87171',
                   fontSize: isCrit ? 16 : 13,
-                  life: 0.9,
-                  maxLife: 0.9,
+                  life: 0.95,
+                  maxLife: 0.95,
                 });
 
-                // Impact particle burst
-                for (let k = 0; k < 6; k++) {
+                // Impact particle burst with weapon energy sparks
+                for (let k = 0; k < 8; k++) {
                   particles.push({
                     x: m.x,
                     y: m.y,
-                    vx: (Math.random() - 0.5) * 160,
-                    vy: (Math.random() - 0.5) * 160,
-                    size: 2 + Math.random() * 3,
-                    color: p.color,
+                    vx: (Math.random() - 0.5) * 200,
+                    vy: (Math.random() - 0.5) * 200,
+                    size: 3 + Math.random() * 3,
+                    color: isCrit ? '#f59e0b' : p.color,
                     alpha: 1,
-                    life: 0.3,
-                    maxLife: 0.3,
+                    life: 0.35,
+                    maxLife: 0.35,
                   });
                 }
                 break;
@@ -800,6 +925,11 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
             continue;
           }
 
+          // Decrement hit flash timer
+          if (m.hitFlashTimer && m.hitFlashTimer > 0) {
+            m.hitFlashTimer -= dt;
+          }
+
           // Monster AI behavior
           const distToPlayer = Math.hypot(player.x - m.x, player.y - m.y);
 
@@ -809,26 +939,26 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
 
             // Behavior policy
             if (m.behavior === 'chaser') {
-              m.vx = Math.cos(angleToP) * m.speed;
-              m.vy = Math.sin(angleToP) * m.speed;
+              m.vx = m.vx * 0.85 + Math.cos(angleToP) * m.speed * 0.15;
+              m.vy = m.vy * 0.85 + Math.sin(angleToP) * m.speed * 0.15;
             } else if (m.behavior === 'flanker') {
               const flankAngle = angleToP + Math.PI / 3;
-              m.vx = Math.cos(flankAngle) * m.speed;
-              m.vy = Math.sin(flankAngle) * m.speed;
+              m.vx = m.vx * 0.85 + Math.cos(flankAngle) * m.speed * 0.15;
+              m.vy = m.vy * 0.85 + Math.sin(flankAngle) * m.speed * 0.15;
             } else if (m.behavior === 'charger') {
               // Prepares charge then dashes fast!
               if (m.telegraphTimer > 0) {
                 m.telegraphTimer -= dt;
-                m.vx = 0;
-                m.vy = 0;
+                m.vx *= 0.85;
+                m.vy *= 0.85;
                 if (m.telegraphTimer <= 0) {
                   // Dash strike!
                   m.vx = Math.cos(angleToP) * m.speed * 2.5;
                   m.vy = Math.sin(angleToP) * m.speed * 2.5;
                 }
               } else {
-                m.vx = Math.cos(angleToP) * m.speed;
-                m.vy = Math.sin(angleToP) * m.speed;
+                m.vx = m.vx * 0.85 + Math.cos(angleToP) * m.speed * 0.15;
+                m.vy = m.vy * 0.85 + Math.sin(angleToP) * m.speed * 0.15;
                 if (distToPlayer < 180 && m.attackCooldown <= 0) {
                   m.telegraphTimer = m.telegraphDuration;
                   m.attackCooldown = 3.0;
@@ -837,11 +967,11 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
             } else if (m.behavior === 'ranged') {
               // Keeps distance and shoots
               if (distToPlayer < 200) {
-                m.vx = -Math.cos(angleToP) * m.speed;
-                m.vy = -Math.sin(angleToP) * m.speed;
+                m.vx = m.vx * 0.85 - Math.cos(angleToP) * m.speed * 0.15;
+                m.vy = m.vy * 0.85 - Math.sin(angleToP) * m.speed * 0.15;
               } else {
-                m.vx = 0;
-                m.vy = 0;
+                m.vx *= 0.85;
+                m.vy *= 0.85;
               }
             }
 
@@ -923,11 +1053,19 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
           }
         }
 
-        // Floating texts
+        // Floating texts with arc physics
         for (let i = floatingTexts.length - 1; i >= 0; i--) {
           const ft = floatingTexts[i];
           ft.life -= dt;
-          ft.y -= 25 * dt; // float up
+          if (ft.vx !== undefined) {
+            ft.x += ft.vx * dt;
+          }
+          if (ft.vy !== undefined) {
+            ft.vy += 120 * dt; // gravity deceleration
+            ft.y += ft.vy * dt;
+          } else {
+            ft.y -= 25 * dt; // float up default
+          }
           if (ft.life <= 0) {
             floatingTexts.splice(i, 1);
           }
@@ -1070,25 +1208,56 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
         ctx.fillStyle = 'rgba(0, 0, 0, 0.4)';
         ctx.fill();
 
-        // Monster Body
+        // Monster Body with Hit-Flash Reaction
+        const isHitFlashing = Boolean(m.hitFlashTimer && m.hitFlashTimer > 0);
         ctx.beginPath();
         ctx.arc(m.x, m.y, m.size, 0, Math.PI * 2);
-        ctx.fillStyle = m.color;
-        if (m.isBoss) {
-          ctx.shadowColor = '#ef4444';
-          ctx.shadowBlur = 15;
+        if (isHitFlashing) {
+          ctx.fillStyle = '#ffffff';
+          ctx.shadowColor = '#ffffff';
+          ctx.shadowBlur = 24;
+        } else {
+          ctx.fillStyle = m.color;
+          if (m.isBoss) {
+            ctx.shadowColor = '#ef4444';
+            ctx.shadowBlur = 18;
+          }
         }
         ctx.fill();
         ctx.shadowBlur = 0;
 
-        ctx.strokeStyle = '#ffffff';
+        ctx.strokeStyle = isHitFlashing ? '#ef4444' : '#ffffff';
         ctx.lineWidth = m.isBoss ? 3 : 1.5;
         ctx.stroke();
 
-        // Eye / aura
+        // Monster Horns / Spikes if Boss or Elite
+        if (m.isBoss) {
+          ctx.fillStyle = '#dc2626';
+          // Left horn
+          ctx.beginPath();
+          ctx.moveTo(m.x - m.size * 0.6, m.y - m.size * 0.5);
+          ctx.lineTo(m.x - m.size * 1.1, m.y - m.size * 1.2);
+          ctx.lineTo(m.x - m.size * 0.3, m.y - m.size * 0.8);
+          ctx.fill();
+          // Right horn
+          ctx.beginPath();
+          ctx.moveTo(m.x + m.size * 0.6, m.y - m.size * 0.5);
+          ctx.lineTo(m.x + m.size * 1.1, m.y - m.size * 1.2);
+          ctx.lineTo(m.x + m.size * 0.3, m.y - m.size * 0.8);
+          ctx.fill();
+        }
+
+        // Eye / aura with demonic glow
         ctx.beginPath();
-        ctx.arc(m.x, m.y - 2, m.size * 0.3, 0, Math.PI * 2);
-        ctx.fillStyle = '#1e1b4b';
+        ctx.arc(m.x, m.y - 2, m.size * 0.32, 0, Math.PI * 2);
+        ctx.fillStyle = isHitFlashing ? '#ef4444' : (m.isBoss ? '#7f1d1d' : '#0f172a');
+        ctx.fill();
+
+        // Pupil / glowing glint looking towards player
+        const lookDir = player.x > m.x ? 2.5 : -2.5;
+        ctx.beginPath();
+        ctx.arc(m.x + lookDir, m.y - 3, m.size * 0.12, 0, Math.PI * 2);
+        ctx.fillStyle = isHitFlashing ? '#ffffff' : (m.isBoss ? '#fbbf24' : '#38bdf8');
         ctx.fill();
 
         // Health Bar above monster
@@ -1110,8 +1279,45 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
         ctx.restore();
       }
 
-      // 5. Draw Player (Vương Lâm)
+      // 4.5 Draw Footprints & Spiritual Ripples on Ground
+      for (const fp of footprints) {
+        const alpha = Math.max(0, fp.life / fp.maxLife);
+        ctx.save();
+        ctx.beginPath();
+        ctx.ellipse(fp.x, fp.y, fp.size, fp.size * 0.45, 0, 0, Math.PI * 2);
+        ctx.strokeStyle = `rgba(56, 189, 248, ${alpha * 0.7})`;
+        ctx.fillStyle = `rgba(56, 189, 248, ${alpha * 0.25})`;
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+        ctx.fill();
+        ctx.restore();
+      }
+
+      // 4.6 Draw Sword Slash Crescent Arcs
+      for (const arc of slashArcs) {
+        const alpha = Math.max(0, arc.life / arc.maxLife);
+        ctx.save();
+        ctx.translate(arc.x, arc.y);
+        ctx.rotate(arc.angle);
+        ctx.beginPath();
+        ctx.arc(0, 0, arc.radius, -0.65, 0.65);
+        ctx.strokeStyle = `rgba(56, 189, 248, ${alpha})`;
+        ctx.lineWidth = 5 * alpha;
+        ctx.shadowColor = '#38bdf8';
+        ctx.shadowBlur = 14;
+        ctx.stroke();
+        // Razor white inner line
+        ctx.beginPath();
+        ctx.arc(0, 0, arc.radius - 2, -0.55, 0.55);
+        ctx.strokeStyle = `rgba(255, 255, 255, ${alpha})`;
+        ctx.lineWidth = 2 * alpha;
+        ctx.stroke();
+        ctx.restore();
+      }
+
+      // 5. Draw Player (Vương Lâm - Detailed Anatomical Model)
       ctx.save();
+
       // Mount rendering (Văn Thú - Mosquito Beast)
       if (stateRef.current.activeMount && stateRef.current.activeMount.active) {
         ctx.save();
@@ -1148,65 +1354,278 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
         ctx.restore();
       }
 
-      // Player Shadow
+      // Movement & gait calculations
+      const curSpeed = Math.hypot(player.vx, player.vy);
+      const isMoving = curSpeed > 15;
+      const walkCycle = Math.sin(player.walkDistance * 0.16);
+      const bobY = isMoving ? Math.abs(Math.sin(player.walkDistance * 0.16)) * 3.5 : 0;
+      const leanTilt = isMoving ? (player.vx / 300) * 0.12 : 0;
+      const facing = player.facing;
+
+      // Contact Shadow under feet
       ctx.beginPath();
-      ctx.ellipse(player.x, player.y + 16, 16, 6, 0, 0, Math.PI * 2);
+      ctx.ellipse(player.x, player.y + 16, Math.max(10, 16 - bobY * 0.5), 6, 0, 0, Math.PI * 2);
       ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
       ctx.fill();
 
-      // Realm Cultivation Aura (glowing ring around Wang Lin)
+      // Realm Cultivation Aura (glowing halo around feet & body)
       ctx.beginPath();
-      ctx.arc(player.x, player.y, player.radius + 6, 0, Math.PI * 2);
+      ctx.ellipse(player.x, player.y + 12, 22, 9, 0, 0, Math.PI * 2);
       ctx.strokeStyle = stateRef.current.currentRealm.badgeColor;
-      ctx.lineWidth = 2.5;
+      ctx.lineWidth = 2;
       ctx.shadowColor = stateRef.current.currentRealm.badgeColor;
-      ctx.shadowBlur = 14;
+      ctx.shadowBlur = 12;
       ctx.stroke();
       ctx.shadowBlur = 0;
 
-      // Wang Lin Sprite Character or fallback
+      // Enter Player Local Coordinate Space
+      ctx.save();
+      ctx.translate(player.x, player.y - bobY);
+      ctx.rotate(leanTilt);
+      ctx.scale(facing, 1);
+
+      // (A) Hai Chân & Đôi Hài (Legs & Daoist Boots)
+      const legStride = isMoving ? walkCycle * 8 : 0;
+      // Back leg
+      ctx.fillStyle = '#0f172a';
+      ctx.fillRect(-7 - legStride, 4, 5, 13);
+      ctx.fillStyle = '#38bdf8';
+      ctx.fillRect(-7 - legStride, 11, 5, 2);
+      ctx.fillStyle = '#1e293b';
+      ctx.fillRect(-8 - legStride, 15, 7, 3);
+
+      // Front leg
+      ctx.fillStyle = '#1e293b';
+      ctx.fillRect(2 + legStride, 4, 5, 13);
+      ctx.fillStyle = '#38bdf8';
+      ctx.fillRect(2 + legStride, 11, 5, 2);
+      ctx.fillStyle = '#334155';
+      ctx.fillRect(1 + legStride, 15, 7, 3);
+
+      // (B) Thân Mình & Đạo Bào 2 Lớp (Torso & Layered Robes)
+      // Inner dark tunic
+      ctx.fillStyle = '#0f172a';
+      ctx.beginPath();
+      ctx.roundRect(-8, -12, 16, 18, 3);
+      ctx.fill();
+
+      // Outer white robe with flowing hem
+      ctx.fillStyle = '#f8fafc';
+      ctx.beginPath();
+      ctx.moveTo(-10, -11);
+      ctx.lineTo(10, -11);
+      ctx.lineTo(12 - (isMoving ? 2 : 0), 10);
+      ctx.lineTo(-12 - (isMoving ? 3 : 0), 10);
+      ctx.closePath();
+      ctx.fill();
+      ctx.strokeStyle = '#0f172a';
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+
+      // Cyan / Gold waist sash
+      ctx.fillStyle = '#38bdf8';
+      ctx.fillRect(-9, -2, 18, 4);
+
+      // Fluttering sash ribbon
+      const ribbonFlutter = isMoving ? Math.sin(now * 0.01) * 3 : 0;
+      ctx.beginPath();
+      ctx.moveTo(-4, 2);
+      ctx.quadraticCurveTo(-14 - (isMoving ? 8 : 0), 8 + ribbonFlutter, -12 - (isMoving ? 12 : 0), 18);
+      ctx.strokeStyle = '#38bdf8';
+      ctx.lineWidth = 2.2;
+      ctx.stroke();
+
+      // (C) Tay Trái (Off-hand - Kết Ấn / Thủ Thế Chỉ Kiếm)
+      ctx.fillStyle = '#f8fafc';
+      ctx.beginPath();
+      ctx.ellipse(-8, -5, 4.5, 7, -0.2, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = '#0f172a';
+      ctx.lineWidth = 1;
+      ctx.stroke();
+
+      ctx.fillStyle = '#fde68a';
+      ctx.beginPath();
+      ctx.arc(-7, -4, 2.8, 0, Math.PI * 2);
+      ctx.fill();
+      // Upward pointing sword finger
+      ctx.strokeStyle = '#fde68a';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.moveTo(-7, -4);
+      ctx.lineTo(-7, -8);
+      ctx.stroke();
+
+      // (D) Tay Phải & Vũ Khí (Weapon Arm & Trảm Tiên Kiếm)
+      if (player.attackPhase === 'slash') {
+        // Attack Swing Phase
+        const slashProgress = 1 - player.attackTimer / 0.24;
+        const armAngle = -0.6 + slashProgress * 1.8;
+        ctx.save();
+        ctx.translate(6, -6);
+        ctx.rotate(armAngle);
+        // Sleeve
+        ctx.fillStyle = '#f8fafc';
+        ctx.fillRect(0, -3, 14, 6);
+        // Hand
+        ctx.fillStyle = '#fde68a';
+        ctx.beginPath();
+        ctx.arc(14, 0, 3, 0, Math.PI * 2);
+        ctx.fill();
+        // Determine weapon profile from equipment
+        const eqWeapon = stateRef.current.equippedWeapon;
+        let bladeColor = '#38bdf8';
+        let bladeWidth = 3.5;
+        let bladeLength = 32;
+        let isAxe = false;
+
+        if (eqWeapon) {
+          if (eqWeapon.name.includes('Huyết') || eqWeapon.rarity === 'co_bao') {
+            bladeColor = '#ef4444';
+          } else if (eqWeapon.name.includes('Cổ Thần') || eqWeapon.name.includes('Phủ') || eqWeapon.rarity === 'than_khi') {
+            bladeColor = '#f59e0b';
+            bladeWidth = 5;
+            bladeLength = 38;
+            isAxe = true;
+          } else if (eqWeapon.name.includes('Trảm Tiên') || eqWeapon.rarity === 'tien') {
+            bladeColor = '#06b6d4';
+          }
+        }
+
+        if (isAxe) {
+          // Cổ Thần Khai Thiên Phủ (Ancient God Battle-Axe)
+          ctx.strokeStyle = '#78350f';
+          ctx.lineWidth = 4;
+          ctx.beginPath();
+          ctx.moveTo(14, 0);
+          ctx.lineTo(46, 0);
+          ctx.stroke();
+
+          // Golden crescent battle-axe blade
+          ctx.fillStyle = '#f59e0b';
+          ctx.shadowColor = '#f59e0b';
+          ctx.shadowBlur = 14;
+          ctx.beginPath();
+          ctx.moveTo(32, -14);
+          ctx.quadraticCurveTo(52, 0, 32, 14);
+          ctx.lineTo(36, 0);
+          ctx.closePath();
+          ctx.fill();
+          ctx.shadowBlur = 0;
+        } else {
+          // Daoist Longsword Blade
+          ctx.strokeStyle = bladeColor;
+          ctx.lineWidth = bladeWidth;
+          ctx.shadowColor = bladeColor;
+          ctx.shadowBlur = 14;
+          ctx.beginPath();
+          ctx.moveTo(14, 0);
+          ctx.lineTo(14 + bladeLength, 0);
+          ctx.stroke();
+          ctx.shadowBlur = 0;
+
+          // Crossguard
+          ctx.fillStyle = bladeColor === '#ef4444' ? '#991b1b' : '#f59e0b';
+          ctx.fillRect(13, -4, 3, 8);
+        }
+        ctx.restore();
+      } else if (player.castPoseTimer > 0) {
+        // Casting Skill Pose
+        ctx.save();
+        ctx.translate(6, -6);
+        ctx.rotate(-1.2);
+        ctx.fillStyle = '#f8fafc';
+        ctx.fillRect(0, -3, 13, 6);
+        ctx.fillStyle = '#fde68a';
+        ctx.beginPath();
+        ctx.arc(13, 0, 3, 0, Math.PI * 2);
+        ctx.fill();
+        // Sparks at hand
+        ctx.fillStyle = '#38bdf8';
+        ctx.beginPath();
+        ctx.arc(16, 0, 3, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      } else {
+        // Idle Arm holding sword hilt at hip
+        ctx.fillStyle = '#f8fafc';
+        ctx.beginPath();
+        ctx.ellipse(8, -4, 4.5, 7, 0.2, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = '#fde68a';
+        ctx.beginPath();
+        ctx.arc(9, 2, 2.5, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Elegant sheathed sword at hip
+        ctx.strokeStyle = '#38bdf8';
+        ctx.lineWidth = 2.5;
+        ctx.beginPath();
+        ctx.moveTo(7, 3);
+        ctx.lineTo(-3, 16);
+        ctx.stroke();
+        ctx.fillStyle = '#f59e0b';
+        ctx.fillRect(6, 1, 3, 3);
+      }
+
+      // (E) Đầu, Tóc Bạc & Khuôn Mặt (Head, Silver Hair & Face)
+      // Ponytail swaying behind
+      const hairSway = isMoving ? Math.sin(now * 0.008) * 4 : 0;
+      ctx.fillStyle = '#e2e8f0';
+      ctx.beginPath();
+      ctx.moveTo(-4, -18);
+      ctx.quadraticCurveTo(-18 - (isMoving ? 8 : 0), -10 + hairSway, -14 - (isMoving ? 14 : 0), 4);
+      ctx.quadraticCurveTo(-8, -4, -2, -12);
+      ctx.fill();
+
+      // Chibi Head & Face with sprite integration
       if (spriteLoaded) {
         ctx.save();
-        // Circular clip with dark background
         ctx.beginPath();
-        ctx.arc(player.x, player.y, player.radius + 2, 0, Math.PI * 2);
+        ctx.arc(0, -18, 14, 0, Math.PI * 2);
         ctx.fillStyle = '#0f172a';
         ctx.fill();
         ctx.clip();
-        // Draw the uploaded Wang Lin character image
-        const imgSize = (player.radius + 2) * 2;
-        ctx.drawImage(
-          wangLinSprite,
-          player.x - imgSize / 2,
-          player.y - imgSize / 2,
-          imgSize,
-          imgSize
-        );
+        ctx.drawImage(wangLinSprite, -16, -34, 32, 34);
         ctx.restore();
 
-        // Highlight ring
+        // Rim border
         ctx.beginPath();
-        ctx.arc(player.x, player.y, player.radius + 2, 0, Math.PI * 2);
+        ctx.arc(0, -18, 14, 0, Math.PI * 2);
         ctx.strokeStyle = stateRef.current.currentRealm.badgeColor;
-        ctx.lineWidth = 1.5;
+        ctx.lineWidth = 1.2;
         ctx.stroke();
       } else {
-        // Fallback Daoist robes circle
+        ctx.fillStyle = '#fde68a';
         ctx.beginPath();
-        ctx.arc(player.x, player.y, player.radius, 0, Math.PI * 2);
-        ctx.fillStyle = '#0f172a';
-        ctx.fill();
-        ctx.strokeStyle = '#38bdf8';
-        ctx.lineWidth = 2;
-        ctx.stroke();
-
-        ctx.beginPath();
-        ctx.arc(player.x, player.y - 4, 8, 0, Math.PI * 2);
-        ctx.fillStyle = '#e2e8f0';
+        ctx.arc(0, -18, 11, 0, Math.PI * 2);
         ctx.fill();
       }
 
-      // Floating Sword Companion
+      // Forehead Cổ Thần Star (Ấn Ký Cổ Thần) with ancient power pulse
+      const starColor = stateRef.current.currentRealm.index >= 9 ? '#eab308' : '#ef4444';
+      const starRadius = 2.2 + Math.sin(now * 0.006) * 0.4;
+      ctx.fillStyle = starColor;
+      ctx.shadowColor = starColor;
+      ctx.shadowBlur = 10 + Math.sin(now * 0.006) * 5;
+      ctx.beginPath();
+      ctx.arc(1, -20, starRadius, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.shadowBlur = 0;
+
+      // Crown / Pin (Ngọc Quan)
+      ctx.fillStyle = '#94a3b8';
+      ctx.beginPath();
+      ctx.moveTo(-4, -28);
+      ctx.lineTo(4, -28);
+      ctx.lineTo(2, -33);
+      ctx.lineTo(-2, -33);
+      ctx.closePath();
+      ctx.fill();
+
+      ctx.restore(); // end player local space
+
+      // Floating Sword Companion (hovers and orbits Wang Lin)
       const swordOrbit = (now / 1000) * 2;
       const sx = player.x + Math.cos(swordOrbit) * 32;
       const sy = player.y + Math.sin(swordOrbit) * 32;
@@ -1221,10 +1640,10 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
       ctx.font = 'bold 12px sans-serif';
       ctx.fillStyle = '#fbbf24';
       ctx.textAlign = 'center';
-      ctx.fillText('Vương Lâm', player.x, player.y - 28);
+      ctx.fillText('Vương Lâm', player.x, player.y - 34);
       ctx.font = '10px sans-serif';
       ctx.fillStyle = stateRef.current.currentRealm.badgeColor;
-      ctx.fillText(stateRef.current.currentRealm.name, player.x, player.y - 42);
+      ctx.fillText(stateRef.current.currentRealm.name, player.x, player.y - 48);
 
       ctx.restore();
 

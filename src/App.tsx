@@ -507,6 +507,7 @@ export default function App() {
             currentMap={currentMap}
             playerHp={playerHp}
             playerMp={playerMp}
+            equippedWeapon={equippedWeapon}
             activeMount={activeMount}
             activeArtifact={activeArtifact}
             skills={skills}

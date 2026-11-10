@@ -150,6 +150,7 @@ export interface Monster {
   telegraphDuration: number;
   attackCooldown: number;
   koTimer: number; // 0 normal, > 0 dissolving on death
+  hitFlashTimer?: number;
   dropTable: MonsterDrop[];
 }
 
@@ -186,6 +187,8 @@ export interface FloatingText {
   id: string;
   x: number;
   y: number;
+  vx?: number;
+  vy?: number;
   text: string;
   color: string;
   fontSize: number;
