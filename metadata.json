@@ -1,0 +1,6 @@
+{
+  "name": "Tiên Nghịch - Tu Chân Lộ",
+  "description": "Web game nhập vai tiên hiệp bối cảnh Tiên Nghịch: Tu luyện cảnh giới, Cực Cảnh thần niệm, Thiên Nghịch Châu, săn quái rơi bảo, linh căn ngũ hành, thú cưỡi Văn Thú và tiên thuật đỉnh cao.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
