@@ -13,6 +13,7 @@ interface InventoryModalProps {
   onClose: () => void;
   onEquipItem: (item: Item) => void;
   onUnequipItem: (type: 'weapon' | 'armor' | 'accessory') => void;
+  onAutoEquipBest?: () => void;
   onUseConsumable: (item: Item) => void;
   onSellItem: (item: Item, count: number) => void;
 }
@@ -27,11 +28,12 @@ export const InventoryModal: React.FC<InventoryModalProps> = ({
   onClose,
   onEquipItem,
   onUnequipItem,
+  onAutoEquipBest,
   onUseConsumable,
   onSellItem,
 }) => {
   const [selectedItem, setSelectedItem] = useState<Item | null>(
-    inventory[0] || equippedWeapon || null
+    equippedWeapon || inventory[0] || null
   );
 
   const getRarityBadge = (rarity: Item['rarity']) => {
@@ -108,54 +110,112 @@ export const InventoryModal: React.FC<InventoryModalProps> = ({
 
             {/* Equipment Slots */}
             <div className="p-3.5 rounded-xl border border-slate-800 bg-slate-900/60 space-y-3">
-              <div className="text-xs font-semibold text-sky-300 uppercase tracking-wider">
-                Trang Bị Bản Mệnh
+              <div className="flex items-center justify-between">
+                <div className="text-xs font-semibold text-sky-300 uppercase tracking-wider flex items-center gap-1.5">
+                  <Sword className="w-3.5 h-3.5" /> 3 Ô Gắn Trang Bị
+                </div>
+                {onAutoEquipBest && (
+                  <button
+                    onClick={onAutoEquipBest}
+                    className="text-[10px] px-2 py-0.5 rounded-md bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 font-semibold flex items-center gap-1 transition-colors cursor-pointer"
+                  >
+                    <Sparkles className="w-3 h-3" /> Gắn Đồ Tốt Nhất
+                  </button>
+                )}
               </div>
 
               <div className="grid grid-cols-3 gap-2">
-                {/* Weapon */}
+                {/* 1. Weapon Slot */}
                 <div
                   onClick={() => equippedWeapon && setSelectedItem(equippedWeapon)}
-                  className={`p-2 rounded-xl border flex flex-col items-center justify-center text-center cursor-pointer min-h-[70px] ${
+                  className={`relative p-2 rounded-xl border flex flex-col items-center justify-center text-center cursor-pointer min-h-[85px] transition-all ${
                     equippedWeapon
-                      ? 'border-amber-500/60 bg-amber-950/20'
-                      : 'border-slate-800 bg-slate-950/50 text-slate-500'
-                  }`}
+                      ? 'border-amber-500/60 bg-amber-950/20 hover:border-amber-400'
+                      : 'border-dashed border-slate-700 bg-slate-950/40 text-slate-500 hover:border-slate-500'
+                  } ${selectedItem?.id === equippedWeapon?.id ? 'ring-2 ring-amber-400' : ''}`}
                 >
-                  <Sword className="w-5 h-5 mb-1 text-amber-400" />
-                  <div className="text-[10px] font-bold truncate max-w-full">
-                    {equippedWeapon ? equippedWeapon.name : 'Vũ Khí'}
+                  <div className="text-[9px] font-mono uppercase text-slate-400 mb-1">
+                    Vũ Khí
                   </div>
+                  <Sword className="w-5 h-5 mb-1 text-amber-400" />
+                  <div className="text-[10px] font-bold truncate max-w-full text-slate-200">
+                    {equippedWeapon ? equippedWeapon.name : 'Ô Trống'}
+                  </div>
+                  {equippedWeapon && (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        sound.playDrinkPill();
+                        onUnequipItem('weapon');
+                        if (selectedItem?.id === equippedWeapon.id) setSelectedItem(null);
+                      }}
+                      className="mt-1 text-[9px] px-1.5 py-0.5 rounded bg-red-950/70 hover:bg-red-800 text-red-200 border border-red-800/60 cursor-pointer"
+                    >
+                      Tháo Ra
+                    </button>
+                  )}
                 </div>
 
-                {/* Armor */}
+                {/* 2. Armor Slot */}
                 <div
                   onClick={() => equippedArmor && setSelectedItem(equippedArmor)}
-                  className={`p-2 rounded-xl border flex flex-col items-center justify-center text-center cursor-pointer min-h-[70px] ${
+                  className={`relative p-2 rounded-xl border flex flex-col items-center justify-center text-center cursor-pointer min-h-[85px] transition-all ${
                     equippedArmor
-                      ? 'border-sky-500/60 bg-sky-950/20'
-                      : 'border-slate-800 bg-slate-950/50 text-slate-500'
-                  }`}
+                      ? 'border-sky-500/60 bg-sky-950/20 hover:border-sky-400'
+                      : 'border-dashed border-slate-700 bg-slate-950/40 text-slate-500 hover:border-slate-500'
+                  } ${selectedItem?.id === equippedArmor?.id ? 'ring-2 ring-sky-400' : ''}`}
                 >
-                  <Shield className="w-5 h-5 mb-1 text-sky-400" />
-                  <div className="text-[10px] font-bold truncate max-w-full">
-                    {equippedArmor ? equippedArmor.name : 'Đạo Bào'}
+                  <div className="text-[9px] font-mono uppercase text-slate-400 mb-1">
+                    Đạo Bào
                   </div>
+                  <Shield className="w-5 h-5 mb-1 text-sky-400" />
+                  <div className="text-[10px] font-bold truncate max-w-full text-slate-200">
+                    {equippedArmor ? equippedArmor.name : 'Ô Trống'}
+                  </div>
+                  {equippedArmor && (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        sound.playDrinkPill();
+                        onUnequipItem('armor');
+                        if (selectedItem?.id === equippedArmor.id) setSelectedItem(null);
+                      }}
+                      className="mt-1 text-[9px] px-1.5 py-0.5 rounded bg-red-950/70 hover:bg-red-800 text-red-200 border border-red-800/60 cursor-pointer"
+                    >
+                      Tháo Ra
+                    </button>
+                  )}
                 </div>
 
-                {/* Accessory */}
+                {/* 3. Accessory Slot */}
                 <div
                   onClick={() => equippedAccessory && setSelectedItem(equippedAccessory)}
-                  className={`p-2 rounded-xl border flex flex-col items-center justify-center text-center cursor-pointer min-h-[70px] ${
+                  className={`relative p-2 rounded-xl border flex flex-col items-center justify-center text-center cursor-pointer min-h-[85px] transition-all ${
                     equippedAccessory
-                      ? 'border-purple-500/60 bg-purple-950/20'
-                      : 'border-slate-800 bg-slate-950/50 text-slate-500'
-                  }`}
+                      ? 'border-purple-500/60 bg-purple-950/20 hover:border-purple-400'
+                      : 'border-dashed border-slate-700 bg-slate-950/40 text-slate-500 hover:border-slate-500'
+                  } ${selectedItem?.id === equippedAccessory?.id ? 'ring-2 ring-purple-400' : ''}`}
                 >
-                  <Gem className="w-5 h-5 mb-1 text-purple-400" />
-                  <div className="text-[10px] font-bold truncate max-w-full">
-                    {equippedAccessory ? equippedAccessory.name : 'Pháp Bảo'}
+                  <div className="text-[9px] font-mono uppercase text-slate-400 mb-1">
+                    Trang Sức
                   </div>
+                  <Gem className="w-5 h-5 mb-1 text-purple-400" />
+                  <div className="text-[10px] font-bold truncate max-w-full text-slate-200">
+                    {equippedAccessory ? equippedAccessory.name : 'Ô Trống'}
+                  </div>
+                  {equippedAccessory && (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        sound.playDrinkPill();
+                        onUnequipItem('accessory');
+                        if (selectedItem?.id === equippedAccessory.id) setSelectedItem(null);
+                      }}
+                      className="mt-1 text-[9px] px-1.5 py-0.5 rounded bg-red-950/70 hover:bg-red-800 text-red-200 border border-red-800/60 cursor-pointer"
+                    >
+                      Tháo Ra
+                    </button>
+                  )}
                 </div>
               </div>
             </div>
@@ -200,24 +260,41 @@ export const InventoryModal: React.FC<InventoryModalProps> = ({
           <div className="md:col-span-5 space-y-2">
             <div className="flex items-center justify-between text-xs text-slate-400">
               <span>Kho chứa đồ ({inventory.length} vật phẩm):</span>
-              <span className="text-[10px]">Nhấp chọn để thao tác</span>
+              <span className="text-[10px] text-amber-300/80">Nhấp đúp vào trang bị để gắn nhanh</span>
             </div>
 
             <div className="grid grid-cols-4 sm:grid-cols-5 gap-2 max-h-[360px] overflow-y-auto p-1 bg-slate-950/60 rounded-xl border border-slate-800">
               {inventory.map((item) => {
                 const r = getRarityBadge(item.rarity);
                 const isSelected = selectedItem?.id === item.id;
+                const canEquip = ['weapon', 'armor', 'accessory'].includes(item.type);
 
                 return (
                   <div
                     key={item.id}
                     onClick={() => setSelectedItem(item)}
+                    onDoubleClick={() => {
+                      if (canEquip) {
+                        sound.playDrinkPill();
+                        onEquipItem(item);
+                      } else if (item.type === 'pill') {
+                        sound.playDrinkPill();
+                        onUseConsumable(item);
+                      }
+                    }}
+                    title={canEquip ? 'Nhấp đúp để gắn vào người' : item.name}
                     className={`relative p-2 rounded-xl border flex flex-col items-center justify-between aspect-square cursor-pointer transition-all ${
                       isSelected
                         ? 'border-amber-400 bg-amber-950/30 scale-105 shadow-md'
                         : `${r.border} bg-slate-900/80 hover:bg-slate-800`
                     }`}
                   >
+                    {canEquip && (
+                      <div className="absolute top-1 left-1 px-1 rounded bg-sky-950/90 text-[8px] font-bold text-sky-300 border border-sky-800">
+                        GẮN
+                      </div>
+                    )}
+
                     <div className="text-xl">
                       {item.type === 'weapon' && '⚔️'}
                       {item.type === 'armor' && '🥋'}
@@ -304,18 +381,50 @@ export const InventoryModal: React.FC<InventoryModalProps> = ({
 
                 {/* Actions */}
                 <div className="space-y-2 pt-2 border-t border-slate-800">
-                  {/* Equip button */}
-                  {['weapon', 'armor', 'accessory'].includes(selectedItem.type) && (
-                    <button
-                      onClick={() => {
-                        sound.playDrinkPill();
-                        onEquipItem(selectedItem);
-                      }}
-                      className="w-full py-2 rounded-lg font-bold text-xs bg-sky-600 hover:bg-sky-500 text-white transition-colors cursor-pointer"
-                    >
-                      Trang Bị Vào Thân
-                    </button>
-                  )}
+                  {/* Unequip button if item is currently equipped */}
+                  {selectedItem &&
+                    (selectedItem.id === equippedWeapon?.id ||
+                      selectedItem.id === equippedArmor?.id ||
+                      selectedItem.id === equippedAccessory?.id) && (
+                      <button
+                        onClick={() => {
+                          sound.playDrinkPill();
+                          onUnequipItem(selectedItem.type as any);
+                          setSelectedItem(null);
+                        }}
+                        className="w-full py-2.5 rounded-lg font-bold text-xs bg-red-600 hover:bg-red-500 text-white transition-colors cursor-pointer flex items-center justify-center gap-1.5 shadow-md shadow-red-900/30"
+                      >
+                        <X className="w-4 h-4" /> Tháo Trang Bị (Gỡ Vào Túi Đồ)
+                      </button>
+                    )}
+
+                  {/* Equip button if item is in inventory and equippable */}
+                  {selectedItem &&
+                    !['weapon', 'armor', 'accessory'].every(
+                      () =>
+                        selectedItem.id === equippedWeapon?.id ||
+                        selectedItem.id === equippedArmor?.id ||
+                        selectedItem.id === equippedAccessory?.id
+                    ) &&
+                    ['weapon', 'armor', 'accessory'].includes(selectedItem.type) &&
+                    selectedItem.id !== equippedWeapon?.id &&
+                    selectedItem.id !== equippedArmor?.id &&
+                    selectedItem.id !== equippedAccessory?.id && (
+                      <button
+                        onClick={() => {
+                          sound.playDrinkPill();
+                          onEquipItem(selectedItem);
+                        }}
+                        className="w-full py-2.5 rounded-lg font-bold text-xs bg-gradient-to-r from-sky-600 to-emerald-600 hover:from-sky-500 hover:to-emerald-500 text-white transition-all shadow-md shadow-sky-900/30 cursor-pointer flex items-center justify-center gap-1.5"
+                      >
+                        <Sword className="w-4 h-4" /> Gắn Vào Ô{' '}
+                        {selectedItem.type === 'weapon'
+                          ? 'Vũ Khí'
+                          : selectedItem.type === 'armor'
+                          ? 'Đạo Bào'
+                          : 'Trang Sức'}
+                      </button>
+                    )}
 
                   {/* Consume pill */}
                   {selectedItem.type === 'pill' && (
@@ -330,16 +439,20 @@ export const InventoryModal: React.FC<InventoryModalProps> = ({
                     </button>
                   )}
 
-                  {/* Sell for Spirit Stones */}
-                  <button
-                    onClick={() => {
-                      sound.playLootChime();
-                      onSellItem(selectedItem, 1);
-                    }}
-                    className="w-full py-1.5 rounded-lg text-[11px] border border-slate-700 bg-slate-800 hover:bg-slate-700 text-slate-300 transition-colors cursor-pointer"
-                  >
-                    Bán (+{selectedItem.price} Linh Thạch)
-                  </button>
+                  {/* Sell for Spirit Stones (only if not currently equipped) */}
+                  {selectedItem.id !== equippedWeapon?.id &&
+                    selectedItem.id !== equippedArmor?.id &&
+                    selectedItem.id !== equippedAccessory?.id && (
+                      <button
+                        onClick={() => {
+                          sound.playLootChime();
+                          onSellItem(selectedItem, 1);
+                        }}
+                        className="w-full py-1.5 rounded-lg text-[11px] border border-slate-700 bg-slate-800 hover:bg-slate-700 text-slate-300 transition-colors cursor-pointer"
+                      >
+                        Bán (+{selectedItem.price} Linh Thạch)
+                      </button>
+                    )}
                 </div>
               </div>
             ) : (

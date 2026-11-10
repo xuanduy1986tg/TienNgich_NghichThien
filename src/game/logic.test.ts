@@ -6,6 +6,10 @@ import {
   canBreakthrough,
   canUpgradeRoot,
   clampDeltaTime,
+  canUpgradeSkill,
+  upgradeSkill,
+  getSkillTierTitle,
+  findBestEquipment,
 } from './logic';
 import { RealmInfo, RootData, Item } from './types';
 
@@ -165,4 +169,66 @@ test('clampDeltaTime limits maximum delta to prevent physics glitches', () => {
   assert.equal(clampDeltaTime(0.016), 0.016);
   assert.equal(clampDeltaTime(0.5, 0.05), 0.05);
   assert.equal(clampDeltaTime(-0.1), 0);
+});
+
+test('canUpgradeSkill validates tu vi and spirit stone requirements', () => {
+  const mockSkill = {
+    id: 'dan_luc_thuat',
+    name: 'Dẫn Lực Thuật',
+    vietnameseName: 'Dẫn Lực',
+    lore: '',
+    realmReqIndex: 0,
+    level: 1,
+    maxLevel: 10,
+    upgradeCostTuVi: 120,
+    upgradeCostStones: 50,
+    cooldown: 2.5,
+    currentCooldown: 0,
+    mpCost: 20,
+    damageMultiplier: 1.8,
+    radius: 130,
+    effectType: 'gravity',
+    color: '#38bdf8',
+    keyBind: '1',
+    description: '',
+  };
+
+  assert.equal(canUpgradeSkill(mockSkill, 100, 50), false);
+  assert.equal(canUpgradeSkill(mockSkill, 120, 40), false);
+  assert.equal(canUpgradeSkill(mockSkill, 120, 50), true);
+
+  const upgraded = upgradeSkill(mockSkill);
+  assert.equal(upgraded.level, 2);
+  assert.ok(upgraded.damageMultiplier > mockSkill.damageMultiplier);
+  assert.ok(upgraded.cooldown < mockSkill.cooldown);
+  assert.ok(upgraded.radius > mockSkill.radius);
+  assert.equal(getSkillTierTitle(1), 'Sơ Nhập Tiên Thuật');
+  assert.equal(getSkillTierTitle(10), 'Hóa Cảnh Đăng Phong (Cực Hạn)');
+});
+
+test('findBestEquipment identifies highest combat score gear from inventory', () => {
+  const currentWeapon = mockWeapon; // atk 30, crit 0.1
+  const betterWeapon = {
+    ...mockWeapon,
+    id: 'huyet_kiem',
+    name: 'Huyết Lôi Cổ Kiếm',
+    stats: { atk: 120, critRate: 0.25 },
+  };
+  const armor = {
+    id: 'bach_y',
+    name: 'Bạch Y Đạo Bào',
+    type: 'armor' as const,
+    rarity: 'linh' as const,
+    levelReq: 1,
+    description: '',
+    iconName: 'shield',
+    count: 1,
+    price: 300,
+    stats: { def: 40, hp: 300 },
+  };
+
+  const result = findBestEquipment([betterWeapon, armor], currentWeapon, null, null);
+  assert.equal(result.hasUpgrades, true);
+  assert.equal(result.bestWeapon?.id, 'huyet_kiem');
+  assert.equal(result.bestArmor?.id, 'bach_y');
 });

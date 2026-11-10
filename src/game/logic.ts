@@ -7,6 +7,7 @@ import {
   RootType,
   Mount,
   Artifact,
+  Skill,
 } from './types';
 
 /**
@@ -209,4 +210,109 @@ export function canUpgradeRoot(
  */
 export function clampDeltaTime(rawDtSeconds: number, maxDt: number = 0.05): number {
   return Math.min(Math.max(0, rawDtSeconds), maxDt);
+}
+
+/**
+ * Checks if a skill can be leveled up.
+ */
+export function canUpgradeSkill(
+  skill: Skill,
+  currentTuVi: number,
+  spiritStones: number
+): boolean {
+  if (skill.level >= (skill.maxLevel || 10)) return false;
+  return currentTuVi >= skill.upgradeCostTuVi && spiritStones >= skill.upgradeCostStones;
+}
+
+/**
+ * Returns enhanced skill stats upon leveling up.
+ */
+export function upgradeSkill(skill: Skill): Skill {
+  const nextLevel = Math.min(skill.maxLevel || 10, skill.level + 1);
+  return {
+    ...skill,
+    level: nextLevel,
+    damageMultiplier: Number((skill.damageMultiplier + 0.35).toFixed(2)),
+    cooldown: Number(Math.max(1.2, skill.cooldown - 0.25).toFixed(1)),
+    radius: skill.radius + 15,
+    upgradeCostTuVi: Math.round(skill.upgradeCostTuVi * 1.55),
+    upgradeCostStones: Math.round(skill.upgradeCostStones * 1.5),
+  };
+}
+
+/**
+ * Returns the ceremonial cultivation tier title for a given skill level.
+ */
+export function getSkillTierTitle(level: number): string {
+  if (level >= 10) return 'Hóa Cảnh Đăng Phong (Cực Hạn)';
+  if (level >= 8) return 'Viên Mãn Chi Cảnh';
+  if (level >= 6) return 'Đại Thành Chi Cảnh';
+  if (level >= 4) return 'Tiểu Thành Chi Cảnh';
+  if (level >= 2) return 'Thuần Thục Tiên Thuật';
+  return 'Sơ Nhập Tiên Thuật';
+}
+
+/**
+ * Calculates a single aggregate combat efficiency score for an equipment item.
+ */
+export function calculateItemCombatScore(item: Item): number {
+  if (!item.stats) return item.price || 0;
+  return (
+    (item.stats.atk || 0) * 1.5 +
+    (item.stats.def || 0) * 1.2 +
+    (item.stats.hp || 0) * 0.15 +
+    (item.stats.mp || 0) * 0.1 +
+    (item.stats.critRate || 0) * 800 +
+    (item.stats.lifesteal || 0) * 600
+  );
+}
+
+/**
+ * Finds and returns the highest combat score weapon, armor, and accessory from inventory.
+ */
+export function findBestEquipment(
+  inventory: Item[],
+  currentWeapon: Item | null,
+  currentArmor: Item | null,
+  currentAccessory: Item | null
+): {
+  bestWeapon: Item | null;
+  bestArmor: Item | null;
+  bestAccessory: Item | null;
+  hasUpgrades: boolean;
+} {
+  let bestWeapon = currentWeapon;
+  let bestWeaponScore = currentWeapon ? calculateItemCombatScore(currentWeapon) : -1;
+
+  let bestArmor = currentArmor;
+  let bestArmorScore = currentArmor ? calculateItemCombatScore(currentArmor) : -1;
+
+  let bestAccessory = currentAccessory;
+  let bestAccessoryScore = currentAccessory ? calculateItemCombatScore(currentAccessory) : -1;
+
+  let hasUpgrades = false;
+
+  for (const item of inventory) {
+    const score = calculateItemCombatScore(item);
+    if (item.type === 'weapon' && score > bestWeaponScore) {
+      bestWeapon = item;
+      bestWeaponScore = score;
+      hasUpgrades = true;
+    } else if (item.type === 'armor' && score > bestArmorScore) {
+      bestArmor = item;
+      bestArmorScore = score;
+      hasUpgrades = true;
+    } else if (item.type === 'accessory' && score > bestAccessoryScore) {
+      bestAccessory = item;
+      bestAccessoryScore = score;
+      hasUpgrades = true;
+    }
+  }
+
+  return {
+    bestWeapon,
+    bestArmor,
+    bestAccessory,
+    hasUpgrades,
+  };
 }

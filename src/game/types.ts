@@ -75,6 +75,10 @@ export interface Skill {
   vietnameseName: string;
   lore: string;
   realmReqIndex: number;
+  level: number;
+  maxLevel: number;
+  upgradeCostTuVi: number;
+  upgradeCostStones: number;
   cooldown: number; // in seconds
   currentCooldown: number;
   mpCost: number;
@@ -84,6 +88,28 @@ export interface Skill {
   color: string;
   keyBind: string;
   description: string;
+}
+
+export interface SaveGameData {
+  version: number;
+  timestamp: number;
+  currentRealmId: string;
+  currentTuVi: number;
+  spiritStones: number;
+  rootStones: number;
+  cucCanhStones: number;
+  playerHp: number;
+  playerMp: number;
+  inventory: Item[];
+  equippedWeapon: Item | null;
+  equippedArmor: Item | null;
+  equippedAccessory: Item | null;
+  roots: Record<RootType, RootData>;
+  skills: Skill[];
+  mounts: Mount[];
+  artifacts: Artifact[];
+  quests: Quest[];
+  currentMapId: string;
 }
 
 export interface Mount {
