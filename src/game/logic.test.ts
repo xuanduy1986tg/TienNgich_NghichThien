@@ -11,7 +11,7 @@ import {
   getSkillTierTitle,
   findBestEquipment,
 } from './logic';
-import { RealmInfo, RootData, Item } from './types';
+import { RealmInfo, RootData, Item, Skill } from './types';
 
 const mockRealm: RealmInfo = {
   id: 'ngung_khi_1',
@@ -172,7 +172,7 @@ test('clampDeltaTime limits maximum delta to prevent physics glitches', () => {
 });
 
 test('canUpgradeSkill validates tu vi and spirit stone requirements', () => {
-  const mockSkill = {
+  const mockSkill: Skill = {
     id: 'dan_luc_thuat',
     name: 'Dẫn Lực Thuật',
     vietnameseName: 'Dẫn Lực',

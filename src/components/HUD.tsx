@@ -13,6 +13,7 @@ import {
   ScrollText,
   MapPin,
   ChevronDown,
+  Save,
 } from 'lucide-react';
 import { PlayerStats, RealmInfo, Skill, Mount, Artifact } from '../game/types';
 import { MAPS, MapConfig } from '../game/data';
@@ -34,6 +35,8 @@ interface HUDProps {
   isMuted: boolean;
   onToggleMute: () => void;
   onSelectMap: (map: MapConfig) => void;
+  onSaveGame?: () => void;
+  saveNotice?: string | null;
   onOpenModal: (
     modalType:
       | 'breakthrough'
@@ -44,6 +47,8 @@ interface HUDProps {
       | 'quests'
       | 'guild'
       | 'cross_server'
+      | 'skills'
+      | 'character_mesh'
   ) => void;
 }
 
@@ -64,6 +69,8 @@ export const HUD: React.FC<HUDProps> = ({
   isMuted,
   onToggleMute,
   onSelectMap,
+  onSaveGame,
+  saveNotice,
   onOpenModal,
 }) => {
   const [mapDropdownOpen, setMapDropdownOpen] = React.useState(false);
@@ -78,14 +85,22 @@ export const HUD: React.FC<HUDProps> = ({
       <div className="flex items-start justify-between gap-3 flex-wrap">
         {/* Left: Player Profile & Vitals */}
         <div className="pointer-events-auto flex items-center gap-3 bg-slate-950/85 border border-slate-800 rounded-2xl p-2.5 shadow-2xl backdrop-blur-md max-w-sm sm:max-w-md">
-          {/* Avatar frame */}
-          <div className="relative">
-            <div className="w-14 h-14 rounded-xl border-2 border-amber-400/60 bg-gradient-to-b from-sky-900 to-slate-950 flex items-center justify-center overflow-hidden shadow-[0_0_15px_rgba(245,158,11,0.3)]">
+          {/* Avatar frame - Click to open 2D Character Mesh Studio */}
+          <div
+            onClick={() => onOpenModal('character_mesh')}
+            title="Nhấp để chiêm ngưỡng Thần Thái 2D Mesh Động Thái của Vương Lâm"
+            className="relative cursor-pointer group"
+          >
+            <div className="w-14 h-14 rounded-xl border-2 border-amber-400/60 group-hover:border-sky-400 group-hover:scale-105 transition-all bg-gradient-to-b from-sky-900 to-slate-950 flex items-center justify-center overflow-hidden shadow-[0_0_15px_rgba(245,158,11,0.3)]">
               <img
                 src="/assets/aistudio/images__6__73922a53.jpg"
                 alt="Vương Lâm"
                 className="w-full h-full object-cover object-top"
               />
+            </div>
+            {/* 2D Mesh Animation badge */}
+            <div className="absolute -top-1 -left-1 px-1 rounded bg-sky-950/95 border border-sky-400 text-[7px] font-bold text-sky-200">
+              2D MESH
             </div>
             {/* Active Mount Icon badge */}
             {activeMount && activeMount.active && (
@@ -230,6 +245,18 @@ export const HUD: React.FC<HUDProps> = ({
             </div>
           </div>
 
+          {/* Save Game Button */}
+          {onSaveGame && (
+            <button
+              onClick={onSaveGame}
+              title="Lưu tiến độ game (Auto-save mỗi 12s)"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-emerald-500/40 bg-emerald-950/80 hover:bg-emerald-900/90 text-emerald-200 text-xs font-semibold backdrop-blur-md cursor-pointer transition-all shadow-md active:scale-95"
+            >
+              <Save className="w-3.5 h-3.5 text-emerald-400" />
+              <span className="hidden sm:inline">Lưu Game</span>
+            </button>
+          )}
+
           {/* Sound Toggle */}
           <button
             onClick={onToggleMute}
@@ -240,6 +267,14 @@ export const HUD: React.FC<HUDProps> = ({
           </button>
         </div>
       </div>
+
+      {/* Floating Save Notification Toast */}
+      {saveNotice && (
+        <div className="fixed top-20 left-1/2 -translate-x-1/2 z-50 px-4 py-2 rounded-xl bg-emerald-950/90 border border-emerald-500/50 text-emerald-200 text-xs font-semibold shadow-2xl backdrop-blur-md flex items-center gap-2 animate-bounce">
+          <Save className="w-4 h-4 text-emerald-400" />
+          <span>{saveNotice}</span>
+        </div>
+      )}
 
       {/* Bottom Center: Skill Bar & Controls */}
       <div className="flex flex-col items-center gap-2">
@@ -252,8 +287,12 @@ export const HUD: React.FC<HUDProps> = ({
             return (
               <div
                 key={skill.id}
-                title={`${skill.vietnameseName} [Phím ${skill.keyBind}]: ${skill.description}`}
+                title={`${skill.vietnameseName} (Cấp ${skill.level || 1}) [Phím ${skill.keyBind}]: ${skill.description}`}
                 className="relative group cursor-pointer"
+                onContextMenu={(e) => {
+                  e.preventDefault();
+                  onOpenModal('skills');
+                }}
               >
                 <div
                   className={`w-12 h-12 md:w-14 md:h-14 rounded-xl border-2 flex flex-col items-center justify-between p-1 transition-all ${
@@ -285,6 +324,11 @@ export const HUD: React.FC<HUDProps> = ({
                     {skill.keyBind}
                   </div>
 
+                  {/* Level badge */}
+                  <div className="absolute -bottom-1 -left-1 px-1 rounded bg-sky-950/95 border border-sky-600/80 text-[8px] font-mono font-bold text-sky-200">
+                    Cấp {skill.level || 1}
+                  </div>
+
                   {/* Cooldown overlay */}
                   {skill.currentCooldown > 0 && (
                     <div className="absolute inset-0 rounded-xl bg-black/75 flex items-center justify-center font-mono font-bold text-xs text-amber-400">
@@ -313,6 +357,14 @@ export const HUD: React.FC<HUDProps> = ({
           >
             <Backpack className="w-3.5 h-3.5 text-sky-400" />
             <span>[B] Túi Đồ</span>
+          </button>
+
+          <button
+            onClick={() => onOpenModal('skills')}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-cyan-500/40 bg-cyan-950/60 hover:bg-cyan-900/80 text-cyan-200 text-xs font-semibold backdrop-blur-md shadow-lg transition-transform active:scale-95 cursor-pointer"
+          >
+            <Zap className="w-3.5 h-3.5 text-cyan-400" />
+            <span>[K] Tiên Thuật</span>
           </button>
 
           <button

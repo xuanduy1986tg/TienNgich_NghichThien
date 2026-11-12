@@ -195,10 +195,26 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
       radius: number;
       duration: number;
       maxDuration: number;
-      type: Skill['effectType'];
+      type: Skill['effectType'] | 'huangquan_pool' | 'dragon_tornado' | 'mountain_fall';
       damageTick: number;
       color: string;
+      vx?: number;
+      vy?: number;
+      subStage?: number;
     }> = [];
+
+    // Red lightning arcs for Cực Cảnh Thần Niệm
+    let lightningArcs: Array<{
+      x1: number;
+      y1: number;
+      x2: number;
+      y2: number;
+      life: number;
+      maxLife: number;
+      color: string;
+    }> = [];
+
+    let redScreenFlash = 0;
 
     // Keyboard state
     const keysPressed = new Set<string>();
@@ -430,104 +446,133 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
 
       // Handle each specific skill VFX and logic
       if (skill.effectType === 'gravity') {
-        // Dẫn Lực Thuật
-        sound.playSlash();
+        // 1. Dẫn Lực Thuật (Gravitational Singularity Vortex)
+        sound.playGraviton();
+        cameraShake = 10;
+        const targetX = player.x + Math.cos(player.angle) * 150;
+        const targetY = player.y + Math.sin(player.angle) * 150;
         activeAoeEffects.push({
-          id: `aoe_${Date.now()}`,
-          x: player.x + Math.cos(player.angle) * 140,
-          y: player.y + Math.sin(player.angle) * 140,
+          id: `grav_${Date.now()}`,
+          x: targetX,
+          y: targetY,
           radius: skill.radius,
-          duration: 1.5,
-          maxDuration: 1.5,
+          duration: 2.5,
+          maxDuration: 2.5,
           type: 'gravity',
-          damageTick: 0.25,
+          damageTick: 0.2,
           color: '#38bdf8',
         });
       } else if (skill.effectType === 'lightning') {
-        // Cực Cảnh Thần Niệm
+        // 2. Cực Cảnh Thần Niệm (Chaining Red Lightning Death Ray)
         sound.playLightning();
-        cameraShake = 16;
-        hitstopTimer = 0.05;
+        cameraShake = 24;
+        hitstopTimer = 0.08;
+        redScreenFlash = 0.24;
 
-        // Strike all monsters within range with violent red lightning arcs
-        for (const m of monsters) {
-          if (m.hp <= 0) continue;
-          const dist = Math.hypot(m.x - player.x, m.y - player.y);
-          if (dist <= skill.radius) {
-            const dmg = Math.round(stateRef.current.playerStats.atk * skill.damageMultiplier);
-            m.hp -= dmg;
-            m.hitFlashTimer = 0.16;
-            m.telegraphTimer = 0; // interrupt attack
+        // Find candidate monsters within radius * 1.4 sorted by distance
+        const targets: Monster[] = monsters
+          .filter((m) => m.hp > 0 && Math.hypot(m.x - player.x, m.y - player.y) <= skill.radius * 1.4)
+          .sort((a, b) => Math.hypot(a.x - player.x, a.y - player.y) - Math.hypot(b.x - player.x, b.y - player.y))
+          .slice(0, 6);
 
-            // Violent knockback impulse away from player
-            const kAngle = Math.atan2(m.y - player.y, m.x - player.x);
-            m.vx += Math.cos(kAngle) * 260;
-            m.vy += Math.sin(kAngle) * 260;
+        let lastX = player.x;
+        let lastY = player.y;
 
-            floatingTexts.push({
-              id: `crit_${Date.now()}_${m.id}`,
+        for (const m of targets) {
+          // Absolute 100% defense pierce
+          const dmg = Math.round(
+            stateRef.current.playerStats.atk * skill.damageMultiplier * (1 + (skill.level - 1) * 0.12)
+          );
+          m.hp -= dmg;
+          m.hitFlashTimer = 0.22;
+          m.telegraphTimer = 0; // Stun / Interrupt
+
+          // Lightning chaining arc
+          lightningArcs.push({
+            x1: lastX,
+            y1: lastY,
+            x2: m.x,
+            y2: m.y,
+            life: 0.28,
+            maxLife: 0.28,
+            color: '#ef4444',
+          });
+          lastX = m.x;
+          lastY = m.y;
+
+          // Violent impulse away from player
+          const kAngle = Math.atan2(m.y - player.y, m.x - player.x);
+          m.vx += Math.cos(kAngle) * 320;
+          m.vy += Math.sin(kAngle) * 320;
+
+          floatingTexts.push({
+            id: `cuc_canh_${Date.now()}_${m.id}`,
+            x: m.x,
+            y: m.y - 30,
+            vx: (Math.random() - 0.5) * 60,
+            vy: -140,
+            text: `CỰC CẢNH! -${dmg}`,
+            color: '#ef4444',
+            fontSize: 19,
+            life: 1.3,
+            maxLife: 1.3,
+          });
+
+          // Red plasma spark burst
+          for (let k = 0; k < 14; k++) {
+            particles.push({
               x: m.x,
-              y: m.y - 30,
-              vx: (Math.random() - 0.5) * 60,
-              vy: -130,
-              text: `CỰC CẢNH! -${dmg}`,
+              y: m.y,
+              vx: (Math.random() - 0.5) * 320,
+              vy: (Math.random() - 0.5) * 320,
+              size: 3.5 + Math.random() * 4,
               color: '#ef4444',
-              fontSize: 18,
-              life: 1.2,
-              maxLife: 1.2,
+              alpha: 1,
+              life: 0.45,
+              maxLife: 0.45,
             });
-
-            // Red sparks
-            for (let k = 0; k < 14; k++) {
-              particles.push({
-                x: m.x,
-                y: m.y,
-                vx: (Math.random() - 0.5) * 300,
-                vy: (Math.random() - 0.5) * 300,
-                size: 3 + Math.random() * 4,
-                color: '#ef4444',
-                alpha: 1,
-                life: 0.45,
-                maxLife: 0.45,
-              });
-            }
           }
         }
       } else if (skill.effectType === 'finger') {
-        // Hoàng Tuyền Chỉ
+        // 3. Hoàng Tuyền Chỉ (Netherworld Finger Beam + Toxic Swamp)
         sound.playFingerZap();
+        cameraShake = 15;
         const beamAngle = player.angle;
-        for (let step = 30; step < 380; step += 30) {
+        const beamLength = 440;
+
+        // Beam particle trail
+        for (let step = 30; step < beamLength; step += 25) {
           const bx = player.x + Math.cos(beamAngle) * step;
           const by = player.y + Math.sin(beamAngle) * step;
           particles.push({
             x: bx,
             y: by,
-            vx: 0,
-            vy: 0,
-            size: 16,
+            vx: (Math.random() - 0.5) * 20,
+            vy: (Math.random() - 0.5) * 20,
+            size: 18,
             color: '#eab308',
             alpha: 1,
-            life: 0.35,
-            maxLife: 0.35,
+            life: 0.4,
+            maxLife: 0.4,
           });
         }
 
-        // Damage monsters in line
+        // Damage & shred defense for all monsters in line
         for (const m of monsters) {
           if (m.hp <= 0) continue;
           const dx = m.x - player.x;
           const dy = m.y - player.y;
           const dist = Math.hypot(dx, dy);
-          if (dist < 400) {
+          if (dist < beamLength) {
             const angleToM = Math.atan2(dy, dx);
             const angleDiff = Math.abs(angleToM - beamAngle);
-            if (angleDiff < 0.35 || angleDiff > Math.PI * 2 - 0.35) {
+            if (angleDiff < 0.4 || angleDiff > Math.PI * 2 - 0.4) {
               const dmg = Math.round(stateRef.current.playerStats.atk * skill.damageMultiplier);
               m.hp -= dmg;
-              m.hitFlashTimer = 0.15;
-              m.vx += Math.cos(beamAngle) * 220;
-              m.vy += Math.sin(beamAngle) * 220;
+              m.defense = Math.max(5, Math.round(m.defense * 0.5)); // 50% defense shred
+              m.hitFlashTimer = 0.18;
+              m.vx += Math.cos(beamAngle) * 260;
+              m.vy += Math.sin(beamAngle) * 260;
 
               floatingTexts.push({
                 id: `ft_fg_${m.id}_${Date.now()}`,
@@ -535,66 +580,110 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
                 y: m.y - 25,
                 vx: Math.cos(beamAngle) * 80,
                 vy: -110,
-                text: `-${dmg}`,
+                text: `PHÁ GIÁP! -${dmg}`,
                 color: '#eab308',
                 fontSize: 16,
-                life: 1.0,
-                maxLife: 1.0,
+                life: 1.1,
+                maxLife: 1.1,
               });
             }
           }
         }
+
+        // Drop 3 bubbling Netherworld toxic pools along the beam line
+        for (let pStep = 100; pStep <= 360; pStep += 130) {
+          activeAoeEffects.push({
+            id: `pool_${Date.now()}_${pStep}`,
+            x: player.x + Math.cos(beamAngle) * pStep,
+            y: player.y + Math.sin(beamAngle) * pStep,
+            radius: 50,
+            duration: 4.0,
+            maxDuration: 4.0,
+            type: 'huangquan_pool',
+            damageTick: 0.25,
+            color: '#eab308',
+          });
+        }
       } else if (skill.effectType === 'soul') {
-        // Tôn Hồn Phiên
+        // 4. Tôn Hồn Phiên (100k Souls Flocking + Full Lifesteal)
         sound.playSoulWail();
+        cameraShake = 12;
+
         // Summon 6 homing soul skulls
         for (let i = 0; i < 6; i++) {
           const soulAngle = (Math.PI * 2 * i) / 6;
           projectiles.push({
             id: `soul_${Date.now()}_${i}`,
-            x: player.x + Math.cos(soulAngle) * 30,
-            y: player.y + Math.sin(soulAngle) * 30,
-            vx: Math.cos(soulAngle) * 160,
-            vy: Math.sin(soulAngle) * 160,
-            radius: 12,
+            x: player.x + Math.cos(soulAngle) * 35,
+            y: player.y + Math.sin(soulAngle) * 35,
+            vx: Math.cos(soulAngle) * 190,
+            vy: Math.sin(soulAngle) * 190,
+            radius: 14,
             damage: Math.round((stateRef.current.playerStats.atk * skill.damageMultiplier) / 4),
             color: '#a855f7',
-            life: 2.2,
-            maxLife: 2.2,
+            life: 2.6,
+            maxLife: 2.6,
             fromPlayer: true,
             skillType: 'soul',
           });
         }
       } else if (skill.effectType === 'domain') {
-        // Sinh Tử Luân Hồi Ý Cảnh (Space)
+        // 5. Sinh Tử Luân Hồi Ý Cảnh (Yin-Yang Taiji Domain + Invulnerability)
         sound.playSoulWail();
-        sound.playLightning();
-        cameraShake = 22;
+        sound.playTribulationThunder();
+        cameraShake = 26;
+        player.invulnerableTimer = 3.5; // Invulnerable in domain
+
         activeAoeEffects.push({
           id: `domain_${Date.now()}`,
           x: player.x,
           y: player.y,
           radius: skill.radius,
-          duration: 4.5,
-          maxDuration: 4.5,
+          duration: 5.0,
+          maxDuration: 5.0,
           type: 'domain',
-          damageTick: 0.5,
+          damageTick: 0.35,
           color: '#ffffff',
         });
-      } else if (skill.effectType === 'wind_rain' || skill.effectType === 'mountain') {
-        // Ultimate skills
-        sound.playTribulationThunder();
-        cameraShake = 28;
+      } else if (skill.effectType === 'wind_rain') {
+        // 6. Hô Phong Hoán Vũ (Two Black Dragon Tornadoes + Corrosive Dark Rain)
+        sound.playBlackDragonRoar();
+        cameraShake = 22;
+
+        // Spawn 2 roaming Black Dragon tornadoes
+        for (let i = 0; i < 2; i++) {
+          const offsetAngle = (i === 0 ? 0.8 : -0.8) + player.angle;
+          activeAoeEffects.push({
+            id: `dragon_${Date.now()}_${i}`,
+            x: player.x + Math.cos(offsetAngle) * 100,
+            y: player.y + Math.sin(offsetAngle) * 100,
+            vx: Math.cos(offsetAngle) * 60,
+            vy: Math.sin(offsetAngle) * 60,
+            radius: 130,
+            duration: 4.5,
+            maxDuration: 4.5,
+            type: 'dragon_tornado',
+            damageTick: 0.25,
+            color: '#334155',
+          });
+        }
+      } else if (skill.effectType === 'mountain') {
+        // 7. Sơn Băng (3 Colossal Mountain Peaks Slamming Down + Earthquake)
+        sound.playMountainCrash();
+        cameraShake = 34;
+        hitstopTimer = 0.1;
+
         activeAoeEffects.push({
-          id: `ult_${Date.now()}`,
+          id: `mountain_${Date.now()}`,
           x: player.x,
           y: player.y,
           radius: skill.radius,
           duration: 3.5,
           maxDuration: 3.5,
-          type: skill.effectType,
-          damageTick: 0.3,
-          color: skill.color,
+          type: 'mountain_fall',
+          damageTick: 0.4,
+          color: '#ea580c',
+          subStage: 0,
         });
       }
     };
@@ -604,6 +693,16 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
       const rawDt = (now - lastTime) / 1000;
       lastTime = now;
       const dt = clampDeltaTime(rawDt, 0.05);
+
+      if (redScreenFlash > 0) {
+        redScreenFlash -= dt;
+      }
+      for (let i = lightningArcs.length - 1; i >= 0; i--) {
+        lightningArcs[i].life -= dt;
+        if (lightningArcs[i].life <= 0) {
+          lightningArcs.splice(i, 1);
+        }
+      }
 
       // Handle map change
       if (stateRef.current.currentMap.id !== lastMapId) {
@@ -755,10 +854,26 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
                 m.vx += Math.cos(knockAngle) * (isCrit ? 220 : 120);
                 m.vy += Math.sin(knockAngle) * (isCrit ? 220 : 120);
 
-                // Lifesteal
-                const healAmt = Math.round(dmg * stateRef.current.playerStats.lifesteal);
-                if (healAmt > 0) {
-                  stateRef.current.onHeal(healAmt, 0);
+                // Lifesteal & Soul healing
+                if (p.skillType === 'soul') {
+                  stateRef.current.onHeal(dmg, Math.round(dmg * 0.25));
+                  floatingTexts.push({
+                    id: `heal_soul_${Date.now()}_${Math.random()}`,
+                    x: player.x,
+                    y: player.y - 35,
+                    vx: 0,
+                    vy: -80,
+                    text: `+${dmg} HÚT HỒN!`,
+                    color: '#10b981',
+                    fontSize: 14,
+                    life: 1.0,
+                    maxLife: 1.0,
+                  });
+                } else {
+                  const healAmt = Math.round(dmg * stateRef.current.playerStats.lifesteal);
+                  if (healAmt > 0) {
+                    stateRef.current.onHeal(healAmt, 0);
+                  }
                 }
 
                 // Floating text with bounce trajectory
@@ -802,37 +917,115 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
           }
         }
 
-        // Update AOE Spells
+        // Update AOE Spells with distinct physics & mechanics
         for (let i = activeAoeEffects.length - 1; i >= 0; i--) {
           const aoe = activeAoeEffects[i];
           aoe.duration -= dt;
           aoe.damageTick -= dt;
 
+          // Roaming Black Dragon tornadoes move dynamically
+          if (aoe.type === 'dragon_tornado') {
+            aoe.x += (aoe.vx || 0) * dt;
+            aoe.y += (aoe.vy || 0) * dt;
+            // Spawn dark rain & dust particles
+            if (Math.random() < 0.4) {
+              particles.push({
+                x: aoe.x + (Math.random() - 0.5) * aoe.radius,
+                y: aoe.y + (Math.random() - 0.5) * aoe.radius,
+                vx: (Math.random() - 0.5) * 60,
+                vy: 120 + Math.random() * 100,
+                size: 2.5,
+                color: '#475569',
+                alpha: 0.8,
+                life: 0.4,
+                maxLife: 0.4,
+              });
+            }
+          }
+
+          // Gravitational pull pulls monsters AND drops into core
+          if (aoe.type === 'gravity') {
+            for (const m of monsters) {
+              if (m.hp <= 0) continue;
+              const dist = Math.hypot(m.x - aoe.x, m.y - aoe.y);
+              if (dist <= aoe.radius * 1.5) {
+                const pullAngle = Math.atan2(aoe.y - m.y, aoe.x - m.x);
+                m.x += Math.cos(pullAngle) * 240 * dt;
+                m.y += Math.sin(pullAngle) * 240 * dt;
+                if (dist < 45) {
+                  m.telegraphTimer = 0; // interrupt attack
+                }
+              }
+            }
+            // Pull ground loot drops toward singularity!
+            for (const drop of groundDrops) {
+              const dDist = Math.hypot(drop.x - aoe.x, drop.y - aoe.y);
+              if (dDist <= aoe.radius * 2) {
+                const dropAngle = Math.atan2(aoe.y - drop.y, aoe.x - drop.x);
+                drop.x += Math.cos(dropAngle) * 200 * dt;
+                drop.y += Math.sin(dropAngle) * 200 * dt;
+              }
+            }
+          }
+
+          // Taiji Domain slows monsters by 80%
+          if (aoe.type === 'domain') {
+            for (const m of monsters) {
+              if (m.hp <= 0) continue;
+              const dist = Math.hypot(m.x - aoe.x, m.y - aoe.y);
+              if (dist <= aoe.radius) {
+                m.vx *= 0.2;
+                m.vy *= 0.2;
+              }
+            }
+          }
+
           if (aoe.damageTick <= 0) {
-            aoe.damageTick = 0.3;
+            aoe.damageTick = aoe.type === 'domain' ? 0.35 : aoe.type === 'mountain_fall' ? 0.5 : 0.25;
+
             // Apply damage to monsters inside
             for (const m of monsters) {
               if (m.hp <= 0) continue;
               const dist = Math.hypot(m.x - aoe.x, m.y - aoe.y);
               if (dist <= aoe.radius) {
-                // If gravity, pull toward center
+                let multiplier = 0.8;
+                let textPrefix = '';
                 if (aoe.type === 'gravity') {
-                  const pullAngle = Math.atan2(aoe.y - m.y, aoe.x - m.x);
-                  m.x += Math.cos(pullAngle) * 90 * dt;
-                  m.y += Math.sin(pullAngle) * 90 * dt;
+                  multiplier = 0.9;
+                  textPrefix = 'DẪN LỰC ';
+                } else if (aoe.type === 'domain') {
+                  multiplier = 1.4;
+                  textPrefix = 'SINH TỬ ';
+                } else if (aoe.type === 'dragon_tornado') {
+                  multiplier = 1.1;
+                  textPrefix = 'HẮC LONG ';
+                  m.vy -= 160 * dt; // Toss monster up
+                } else if (aoe.type === 'huangquan_pool') {
+                  multiplier = 0.7;
+                  textPrefix = 'HOÀNG TUYỀN ';
+                } else if (aoe.type === 'mountain_fall') {
+                  multiplier = 3.6;
+                  textPrefix = 'SƠN BĂNG! ';
+                  m.telegraphTimer = 0;
+                  m.attackCooldown += 2.0; // Stun
+                  cameraShake = 28;
                 }
 
-                const dmg = Math.round(stateRef.current.playerStats.atk * 0.9);
+                const dmg = Math.round(stateRef.current.playerStats.atk * multiplier);
                 m.hp -= dmg;
+                m.hitFlashTimer = 0.16;
+
                 floatingTexts.push({
-                  id: `aoe_dmg_${Date.now()}_${m.id}`,
+                  id: `aoe_dmg_${Date.now()}_${m.id}_${Math.random()}`,
                   x: m.x,
                   y: m.y - 15,
-                  text: `-${dmg}`,
+                  vx: (Math.random() - 0.5) * 40,
+                  vy: -90,
+                  text: `${textPrefix}-${dmg}`,
                   color: aoe.color,
-                  fontSize: 12,
-                  life: 0.6,
-                  maxLife: 0.6,
+                  fontSize: aoe.type === 'mountain_fall' ? 18 : 13,
+                  life: 0.8,
+                  maxLife: 0.8,
                 });
               }
             }
@@ -873,20 +1066,127 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
                   const count = Math.floor(
                     Math.random() * (drop.maxCount - drop.minCount + 1) + drop.minCount
                   );
+
+                  let stats: Item['stats'] | undefined = undefined;
+                  let desc = 'Vật phẩm quý hiếm thu thập được khi trảm sát yêu thú.';
+
+                  if (drop.type === 'weapon') {
+                    const baseAtk =
+                      drop.rarity === 'than_khi'
+                        ? 260
+                        : drop.rarity === 'co_bao'
+                        ? 160
+                        : drop.rarity === 'tien'
+                        ? 95
+                        : drop.rarity === 'bao'
+                        ? 58
+                        : 30;
+                    const crit =
+                      drop.rarity === 'than_khi'
+                        ? 0.28
+                        : drop.rarity === 'co_bao'
+                        ? 0.20
+                        : drop.rarity === 'tien'
+                        ? 0.12
+                        : 0.06;
+                    stats = { atk: baseAtk, critRate: crit };
+                    desc = `Binh khí [${drop.name}], gia tăng +${baseAtk} Công Kích và +${Math.round(crit * 100)}% Bạo Kích khi gắn vào ô Vũ Khí.`;
+                  } else if (drop.type === 'armor') {
+                    const baseDef =
+                      drop.rarity === 'than_khi'
+                        ? 150
+                        : drop.rarity === 'co_bao'
+                        ? 95
+                        : drop.rarity === 'tien'
+                        ? 65
+                        : drop.rarity === 'bao'
+                        ? 40
+                        : 22;
+                    const baseHp =
+                      drop.rarity === 'than_khi'
+                        ? 1200
+                        : drop.rarity === 'co_bao'
+                        ? 750
+                        : drop.rarity === 'tien'
+                        ? 450
+                        : drop.rarity === 'bao'
+                        ? 260
+                        : 140;
+                    stats = { def: baseDef, hp: baseHp };
+                    desc = `Đạo bào phòng hộ [${drop.name}], gia tăng +${baseDef} Phòng Ngự và +${baseHp} Khí Huyết khi gắn vào ô Đạo Bào.`;
+                  } else if (drop.type === 'accessory') {
+                    const baseAtk =
+                      drop.rarity === 'than_khi'
+                        ? 130
+                        : drop.rarity === 'co_bao'
+                        ? 85
+                        : drop.rarity === 'tien'
+                        ? 50
+                        : 30;
+                    const baseDef =
+                      drop.rarity === 'than_khi'
+                        ? 90
+                        : drop.rarity === 'co_bao'
+                        ? 55
+                        : drop.rarity === 'tien'
+                        ? 35
+                        : 20;
+                    const baseHp =
+                      drop.rarity === 'than_khi'
+                        ? 800
+                        : drop.rarity === 'co_bao'
+                        ? 500
+                        : drop.rarity === 'tien'
+                        ? 300
+                        : 180;
+                    stats = { atk: baseAtk, def: baseDef, hp: baseHp, critRate: 0.08 };
+                    desc = `Trang sức ngưng tụ linh lực [${drop.name}], gia trì toàn diện các thuộc tính khi gắn vào ô Trang Sức.`;
+                  } else if (drop.type === 'pill') {
+                    desc = `Linh đan thần dược [${drop.name}], nuốt vào tăng ngay Tu Vi.`;
+                  } else if (drop.type === 'material') {
+                    desc = `Linh thạch thiên địa [${drop.name}], dùng để đột phá và nâng cấp Ngũ Hành Linh Căn.`;
+                  }
+
                   groundDrops.push({
                     id: `drop_${Date.now()}_${Math.random()}`,
                     x: m.x + (Math.random() - 0.5) * 40,
                     y: m.y + (Math.random() - 0.5) * 40,
                     item: {
-                      id: drop.itemId,
+                      id: `${drop.itemId}_${Date.now()}_${Math.floor(Math.random() * 1000)}`,
                       name: drop.name,
                       type: drop.type,
                       rarity: drop.rarity,
                       levelReq: 1,
-                      description: 'Vật phẩm quý hiếm thu thập được.',
-                      iconName: 'sparkles',
+                      description: desc,
+                      iconName:
+                        drop.type === 'weapon'
+                          ? 'sword'
+                          : drop.type === 'armor'
+                          ? 'shield'
+                          : drop.type === 'accessory'
+                          ? 'gem'
+                          : drop.type === 'pill'
+                          ? 'sparkles'
+                          : 'gem',
                       count,
-                      price: 80,
+                      price:
+                        drop.rarity === 'than_khi'
+                          ? 650
+                          : drop.rarity === 'co_bao'
+                          ? 380
+                          : drop.rarity === 'tien'
+                          ? 200
+                          : drop.rarity === 'bao'
+                          ? 100
+                          : 40,
+                      stats,
+                      consumableEffect:
+                        drop.type === 'pill'
+                          ? {
+                              type: 'gain_tuvi',
+                              value: drop.rarity === 'bao' ? 350 : 150,
+                            }
+                          : undefined,
                     },
                     count,
                     color:
@@ -904,6 +1204,37 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
                     life: 45, // 45 seconds on ground
                   });
                 }
+              }
+
+              // Bonus equippable accessory drop from Elite or Boss
+              if ((m.isBoss || m.isElite) && Math.random() < (m.isBoss ? 0.75 : 0.35)) {
+                const accRarity = m.isBoss ? 'tien' : 'bao';
+                const accName = m.isBoss ? 'Thái Cực Bội Hoàn (Cổ Linh)' : 'Lôi Linh Ngọc Bội';
+                groundDrops.push({
+                  id: `drop_acc_${Date.now()}`,
+                  x: m.x + (Math.random() - 0.5) * 30,
+                  y: m.y + (Math.random() - 0.5) * 30,
+                  item: {
+                    id: `acc_${Date.now()}_${Math.floor(Math.random() * 1000)}`,
+                    name: accName,
+                    type: 'accessory',
+                    rarity: accRarity,
+                    levelReq: 1,
+                    description: `Pháp bảo trang sức hiếm rơi ra từ thủ lĩnh, gia tăng Công Kích, Phòng Ngự và Khí Huyết khi gắn vào ô Trang Sức.`,
+                    iconName: 'gem',
+                    count: 1,
+                    price: 280,
+                    stats: {
+                      atk: m.isBoss ? 65 : 35,
+                      def: m.isBoss ? 45 : 22,
+                      hp: m.isBoss ? 450 : 220,
+                      critRate: m.isBoss ? 0.12 : 0.06,
+                    },
+                  },
+                  count: 1,
+                  color: m.isBoss ? '#a855f7' : '#3b82f6',
+                  life: 60,
+                });
               }
             }
 
@@ -1116,14 +1447,14 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
       ctx.lineWidth = 4;
       ctx.strokeRect(0, 0, WORLD_WIDTH, WORLD_HEIGHT);
 
-      // 2. Draw AOE Effects (Sinh Tử Ý Cảnh, Gravity, Mountain)
+      // 2. Draw AOE Effects (Sinh Tử Ý Cảnh, Gravity, Mountain, Dragon Tornado, Netherworld Pool)
       for (const aoe of activeAoeEffects) {
         ctx.save();
         if (aoe.type === 'domain') {
           // Taiji Yin-Yang rotating domain
           ctx.beginPath();
           ctx.arc(aoe.x, aoe.y, aoe.radius, 0, Math.PI * 2);
-          ctx.fillStyle = 'rgba(15, 23, 42, 0.65)';
+          ctx.fillStyle = 'rgba(15, 23, 42, 0.7)';
           ctx.fill();
           ctx.lineWidth = 3;
           ctx.strokeStyle = '#f8fafc';
@@ -1138,16 +1469,141 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
           // White half
           ctx.beginPath();
           ctx.arc(0, 0, aoe.radius * 0.9, 0, Math.PI);
-          ctx.fillStyle = 'rgba(255, 255, 255, 0.15)';
+          ctx.fillStyle = 'rgba(255, 255, 255, 0.2)';
           ctx.fill();
 
           // Black half
           ctx.beginPath();
           ctx.arc(0, 0, aoe.radius * 0.9, Math.PI, Math.PI * 2);
-          ctx.fillStyle = 'rgba(0, 0, 0, 0.35)';
+          ctx.fillStyle = 'rgba(0, 0, 0, 0.45)';
+          ctx.fill();
+
+          // Opposite eyes
+          ctx.beginPath();
+          ctx.arc(aoe.radius * 0.45, 0, 14, 0, Math.PI * 2);
+          ctx.fillStyle = '#0f172a';
+          ctx.fill();
+
+          ctx.beginPath();
+          ctx.arc(-aoe.radius * 0.45, 0, 14, 0, Math.PI * 2);
+          ctx.fillStyle = '#f8fafc';
           ctx.fill();
 
           ctx.restore();
+        } else if (aoe.type === 'gravity') {
+          // Gravitational Singularity Accretion Disk
+          const vortexAngle = (now / 1000) * 4;
+          // Accretion spiral arms
+          for (let arm = 0; arm < 3; arm++) {
+            ctx.save();
+            ctx.translate(aoe.x, aoe.y);
+            ctx.rotate(vortexAngle + (arm * Math.PI * 2) / 3);
+            ctx.beginPath();
+            ctx.ellipse(0, 0, aoe.radius, aoe.radius * 0.4, 0, 0, Math.PI * 2);
+            ctx.strokeStyle = 'rgba(56, 189, 248, 0.45)';
+            ctx.lineWidth = 2.5;
+            ctx.stroke();
+            ctx.restore();
+          }
+
+          // Dark Event Horizon Core
+          ctx.beginPath();
+          ctx.arc(aoe.x, aoe.y, 22, 0, Math.PI * 2);
+          ctx.fillStyle = '#020617';
+          ctx.fill();
+          ctx.strokeStyle = '#38bdf8';
+          ctx.lineWidth = 3;
+          ctx.shadowColor = '#38bdf8';
+          ctx.shadowBlur = 16;
+          ctx.stroke();
+          ctx.shadowBlur = 0;
+        } else if (aoe.type === 'dragon_tornado') {
+          // Black Dragon Tornado
+          const spin = (now / 1000) * 6;
+          ctx.save();
+          ctx.translate(aoe.x, aoe.y);
+          for (let layer = 0; layer < 4; layer++) {
+            ctx.beginPath();
+            ctx.ellipse(
+              0,
+              -layer * 12,
+              aoe.radius * (0.4 + layer * 0.18),
+              aoe.radius * 0.25,
+              spin * (layer % 2 === 0 ? 1 : -1),
+              0,
+              Math.PI * 2
+            );
+            ctx.fillStyle = layer % 2 === 0 ? 'rgba(30, 41, 59, 0.35)' : 'rgba(15, 23, 42, 0.5)';
+            ctx.fill();
+            ctx.strokeStyle = '#475569';
+            ctx.lineWidth = 1.5;
+            ctx.stroke();
+          }
+          // Glowing crimson eyes of the Black Dragon
+          ctx.beginPath();
+          ctx.arc(-8, -45, 3.5, 0, Math.PI * 2);
+          ctx.arc(8, -45, 3.5, 0, Math.PI * 2);
+          ctx.fillStyle = '#ef4444';
+          ctx.shadowColor = '#ef4444';
+          ctx.shadowBlur = 8;
+          ctx.fill();
+          ctx.shadowBlur = 0;
+          ctx.restore();
+        } else if (aoe.type === 'huangquan_pool') {
+          // Netherworld Toxic Mire
+          ctx.beginPath();
+          ctx.arc(aoe.x, aoe.y, aoe.radius, 0, Math.PI * 2);
+          ctx.fillStyle = 'rgba(234, 179, 8, 0.25)';
+          ctx.fill();
+          ctx.strokeStyle = 'rgba(234, 179, 8, 0.6)';
+          ctx.lineWidth = 2;
+          ctx.stroke();
+
+          // Bubbles
+          const bubblePhase = (now / 1000) * 3;
+          for (let b = 0; b < 3; b++) {
+            const bx = aoe.x + Math.sin(bubblePhase + b * 2) * (aoe.radius * 0.6);
+            const by = aoe.y + Math.cos(bubblePhase + b * 2) * (aoe.radius * 0.5);
+            ctx.beginPath();
+            ctx.arc(bx, by, 4 + Math.sin(bubblePhase * 2 + b) * 2, 0, Math.PI * 2);
+            ctx.fillStyle = '#fef08a';
+            ctx.fill();
+          }
+        } else if (aoe.type === 'mountain_fall') {
+          // Colossal Mountain Slam with seismic shockwaves
+          const progress = 1 - aoe.duration / aoe.maxDuration;
+          const shakeOffset = Math.sin(now * 0.05) * 4;
+
+          // Expanding shockwave rings
+          ctx.beginPath();
+          ctx.arc(aoe.x, aoe.y, Math.min(aoe.radius, progress * aoe.radius * 1.5), 0, Math.PI * 2);
+          ctx.strokeStyle = 'rgba(234, 88, 12, 0.7)';
+          ctx.lineWidth = 4;
+          ctx.stroke();
+
+          // 3 Mountain Peak Silhouettes
+          const peaks = [
+            { ox: 0, oy: -15, scale: 1 },
+            { ox: -60, oy: 20, scale: 0.75 },
+            { ox: 60, oy: 20, scale: 0.75 },
+          ];
+
+          for (const peak of peaks) {
+            ctx.save();
+            ctx.translate(aoe.x + peak.ox, aoe.y + peak.oy + shakeOffset);
+            ctx.scale(peak.scale, peak.scale);
+            ctx.beginPath();
+            ctx.moveTo(0, -80);
+            ctx.lineTo(55, 30);
+            ctx.lineTo(-55, 30);
+            ctx.closePath();
+            ctx.fillStyle = 'rgba(124, 45, 18, 0.6)';
+            ctx.fill();
+            ctx.strokeStyle = '#ea580c';
+            ctx.lineWidth = 2.5;
+            ctx.stroke();
+            ctx.restore();
+          }
         } else {
           ctx.beginPath();
           ctx.arc(aoe.x, aoe.y, aoe.radius, 0, Math.PI * 2);
@@ -1157,6 +1613,32 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
           ctx.strokeStyle = aoe.color;
           ctx.stroke();
         }
+        ctx.restore();
+      }
+
+      // Red Lightning Arcs for Cực Cảnh Thần Niệm
+      for (const arc of lightningArcs) {
+        ctx.save();
+        ctx.beginPath();
+        ctx.moveTo(arc.x1, arc.y1);
+        const steps = 4;
+        const dx = (arc.x2 - arc.x1) / steps;
+        const dy = (arc.y2 - arc.y1) / steps;
+        for (let s = 1; s < steps; s++) {
+          const jitterX = Math.sin(s * 9 + now) * 18;
+          const jitterY = Math.cos(s * 9 + now) * 18;
+          ctx.lineTo(arc.x1 + dx * s + jitterX, arc.y1 + dy * s + jitterY);
+        }
+        ctx.lineTo(arc.x2, arc.y2);
+        ctx.strokeStyle = '#ef4444';
+        ctx.lineWidth = 3.5;
+        ctx.shadowColor = '#ef4444';
+        ctx.shadowBlur = 16;
+        ctx.stroke();
+
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth = 1.2;
+        ctx.stroke();
         ctx.restore();
       }
 
@@ -1682,6 +2164,14 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
       }
 
       ctx.restore(); // restore camera transform
+
+      // Red Vignette Screen Flash on Cực Cảnh Thần Niệm
+      if (redScreenFlash > 0) {
+        ctx.save();
+        ctx.fillStyle = `rgba(239, 68, 68, ${Math.min(0.35, redScreenFlash * 1.5)})`;
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.restore();
+      }
 
       // 9. Minimap (Top-right corner)
       const mmWidth = 140;

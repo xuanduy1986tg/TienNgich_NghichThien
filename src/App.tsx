@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
   Artifact,
   Item,
@@ -9,6 +9,7 @@ import {
   RootData,
   RootType,
   Skill,
+  SaveGameData,
 } from './game/types';
 import {
   ALL_SKILLS,
@@ -21,31 +22,53 @@ import {
   REALMS,
   MapConfig,
 } from './game/data';
-import { calculatePlayerStats, canBreakthrough } from './game/logic';
+import {
+  calculatePlayerStats,
+  canBreakthrough,
+  canUpgradeSkill,
+  upgradeSkill,
+  findBestEquipment,
+} from './game/logic';
 import { sound } from './game/audio';
 import { TitleScreen } from './components/TitleScreen';
 import { GameCanvas } from './components/GameCanvas';
 import { HUD } from './components/HUD';
 import { BreakthroughModal } from './components/modals/BreakthroughModal';
 import { InventoryModal } from './components/modals/InventoryModal';
+import { SkillsModal } from './components/modals/SkillsModal';
 import { RootsModal } from './components/modals/RootsModal';
 import { ArtifactsModal } from './components/modals/ArtifactsModal';
 import { MountsModal } from './components/modals/MountsModal';
 import { QuestsModal } from './components/modals/QuestsModal';
 import { GuildModal } from './components/modals/GuildModal';
 import { CrossServerModal } from './components/modals/CrossServerModal';
+import { WangLinMeshModal } from './components/modals/WangLinMeshModal';
 
 type GameState = 'title' | 'playing' | 'gameover';
 type ModalType =
   | 'breakthrough'
   | 'inventory'
+  | 'skills'
   | 'roots'
   | 'artifacts'
   | 'mounts'
   | 'quests'
   | 'guild'
   | 'cross_server'
+  | 'character_mesh'
   | null;
+
+const SAVE_STORAGE_KEY = 'TIEN_NGHICH_SAVE_DATA_V1';
+
+function getInitialSave(): Partial<SaveGameData> | null {
+  try {
+    const raw = typeof window !== 'undefined' ? localStorage.getItem(SAVE_STORAGE_KEY) : null;
+    if (!raw) return null;
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
+}
 
 export default function App() {
   // Check for ?autostart=1
@@ -56,29 +79,73 @@ export default function App() {
   const [activeModal, setActiveModal] = useState<ModalType>(null);
   const [isMuted, setIsMuted] = useState<boolean>(false);
 
+  const initialSave = useMemo(() => getInitialSave(), []);
+
   // Player Core Cultivation State
-  const [currentRealm, setCurrentRealm] = useState<RealmInfo>(REALMS[0]);
-  const [currentTuVi, setCurrentTuVi] = useState<number>(85);
-  const [spiritStones, setSpiritStones] = useState<number>(350);
-  const [rootStones, setRootStones] = useState<number>(8);
-  const [cucCanhStones, setCucCanhStones] = useState<number>(3);
+  const [currentRealm, setCurrentRealm] = useState<RealmInfo>(() => {
+    if (initialSave?.currentRealmId) {
+      return REALMS.find((r) => r.id === initialSave.currentRealmId) || REALMS[0];
+    }
+    return REALMS[0];
+  });
+  const [currentTuVi, setCurrentTuVi] = useState<number>(initialSave?.currentTuVi ?? 85);
+  const [spiritStones, setSpiritStones] = useState<number>(initialSave?.spiritStones ?? 350);
+  const [rootStones, setRootStones] = useState<number>(initialSave?.rootStones ?? 8);
+  const [cucCanhStones, setCucCanhStones] = useState<number>(initialSave?.cucCanhStones ?? 3);
 
   // Vitals
-  const [playerHp, setPlayerHp] = useState<number>(REALMS[0].baseHp);
-  const [playerMp, setPlayerMp] = useState<number>(REALMS[0].baseMp);
+  const [playerHp, setPlayerHp] = useState<number>(initialSave?.playerHp ?? REALMS[0].baseHp);
+  const [playerMp, setPlayerMp] = useState<number>(initialSave?.playerMp ?? REALMS[0].baseMp);
 
   // Entities & Collections
-  const [roots, setRoots] = useState<Record<RootType, RootData>>(INITIAL_ROOTS);
-  const [inventory, setInventory] = useState<Item[]>(INITIAL_ITEMS);
-  const [equippedWeapon, setEquippedWeapon] = useState<Item | null>(INITIAL_ITEMS[2]);
-  const [equippedArmor, setEquippedArmor] = useState<Item | null>(INITIAL_ITEMS[3]);
-  const [equippedAccessory, setEquippedAccessory] = useState<Item | null>(null);
+  const [roots, setRoots] = useState<Record<RootType, RootData>>(initialSave?.roots ?? INITIAL_ROOTS);
+  const [inventory, setInventory] = useState<Item[]>(initialSave?.inventory ?? INITIAL_ITEMS);
+  const [equippedWeapon, setEquippedWeapon] = useState<Item | null>(() => {
+    if (initialSave !== null && initialSave.equippedWeapon !== undefined) return initialSave.equippedWeapon;
+    return INITIAL_ITEMS[2];
+  });
+  const [equippedArmor, setEquippedArmor] = useState<Item | null>(() => {
+    if (initialSave !== null && initialSave.equippedArmor !== undefined) return initialSave.equippedArmor;
+    return INITIAL_ITEMS[3];
+  });
+  const [equippedAccessory, setEquippedAccessory] = useState<Item | null>(() => {
+    if (initialSave !== null && initialSave.equippedAccessory !== undefined) return initialSave.equippedAccessory;
+    return null;
+  });
 
-  const [skills, setSkills] = useState<Skill[]>(ALL_SKILLS);
-  const [mounts, setMounts] = useState<Mount[]>(MOUNTS);
-  const [artifacts, setArtifacts] = useState<Artifact[]>(ARTIFACTS);
-  const [quests, setQuests] = useState<Quest[]>(INITIAL_QUESTS);
-  const [currentMap, setCurrentMap] = useState<MapConfig>(MAPS[0]);
+  const [skills, setSkills] = useState<Skill[]>(() => {
+    if (initialSave?.skills && Array.isArray(initialSave.skills)) {
+      return ALL_SKILLS.map((defSkill) => {
+        const saved = initialSave.skills!.find((s) => s.id === defSkill.id);
+        if (saved) {
+          return {
+            ...defSkill,
+            level: saved.level || defSkill.level,
+            damageMultiplier: saved.damageMultiplier || defSkill.damageMultiplier,
+            cooldown: saved.cooldown || defSkill.cooldown,
+            radius: saved.radius || defSkill.radius,
+            upgradeCostTuVi: saved.upgradeCostTuVi || defSkill.upgradeCostTuVi,
+            upgradeCostStones: saved.upgradeCostStones || defSkill.upgradeCostStones,
+          };
+        }
+        return defSkill;
+      });
+    }
+    return ALL_SKILLS;
+  });
+
+  const [mounts, setMounts] = useState<Mount[]>(initialSave?.mounts ?? MOUNTS);
+  const [artifacts, setArtifacts] = useState<Artifact[]>(initialSave?.artifacts ?? ARTIFACTS);
+  const [quests, setQuests] = useState<Quest[]>(initialSave?.quests ?? INITIAL_QUESTS);
+  const [currentMap, setCurrentMap] = useState<MapConfig>(() => {
+    if (initialSave?.currentMapId) {
+      return MAPS.find((m) => m.id === initialSave.currentMapId) || MAPS[0];
+    }
+    return MAPS[0];
+  });
+
+  // Save notification toast
+  const [saveNotice, setSaveNotice] = useState<string | null>(null);
 
   // Special Timers & Dew
   const [dewReady, setDewReady] = useState<boolean>(true);
@@ -162,6 +229,8 @@ export default function App() {
         setActiveModal((prev) => (prev === 'mounts' ? null : 'mounts'));
       } else if (e.key === 'q' || e.key === 'Q') {
         setActiveModal((prev) => (prev === 'quests' ? null : 'quests'));
+      } else if (e.key === 'k' || e.key === 'K') {
+        setActiveModal((prev) => (prev === 'skills' ? null : 'skills'));
       } else if (e.key === 'm' || e.key === 'M') {
         const nextMute = sound.toggleMute();
         setIsMuted(nextMute);
@@ -312,22 +381,215 @@ export default function App() {
     setCurrentTuVi(remainingTuVi);
   }, []);
 
-  // Equip / Unequip
-  const handleEquipItem = useCallback((item: Item) => {
-    if (item.type === 'weapon') {
-      setEquippedWeapon(item);
-    } else if (item.type === 'armor') {
-      setEquippedArmor(item);
-    } else if (item.type === 'accessory') {
-      setEquippedAccessory(item);
-    }
-  }, []);
+  // Equip / Unequip with Bag inventory swapping
+  const handleEquipItem = useCallback(
+    (item: Item) => {
+      let replacedItem: Item | null = null;
+      if (item.type === 'weapon') {
+        replacedItem = equippedWeapon;
+        setEquippedWeapon({ ...item, count: 1 });
+      } else if (item.type === 'armor') {
+        replacedItem = equippedArmor;
+        setEquippedArmor({ ...item, count: 1 });
+      } else if (item.type === 'accessory') {
+        replacedItem = equippedAccessory;
+        setEquippedAccessory({ ...item, count: 1 });
+      } else {
+        return;
+      }
 
-  const handleUnequipItem = useCallback((type: 'weapon' | 'armor' | 'accessory') => {
-    if (type === 'weapon') setEquippedWeapon(null);
-    else if (type === 'armor') setEquippedArmor(null);
-    else if (type === 'accessory') setEquippedAccessory(null);
-  }, []);
+      // Remove 1 copy of item from inventory, and put replaced item back if any
+      setInventory((prev) => {
+        let nextInv = prev
+          .map((invItem) => (invItem.id === item.id ? { ...invItem, count: invItem.count - 1 } : invItem))
+          .filter((invItem) => invItem.count > 0);
+
+        if (replacedItem) {
+          const existingIdx = nextInv.findIndex((i) => i.id === replacedItem!.id);
+          if (existingIdx >= 0) {
+            nextInv = nextInv.map((i, idx) => (idx === existingIdx ? { ...i, count: i.count + 1 } : i));
+          } else {
+            nextInv = [...nextInv, { ...replacedItem, count: 1 }];
+          }
+        }
+        return nextInv;
+      });
+
+      sound.playEquip();
+    },
+    [equippedWeapon, equippedArmor, equippedAccessory]
+  );
+
+  const handleUnequipItem = useCallback(
+    (type: 'weapon' | 'armor' | 'accessory') => {
+      let unequippedItem: Item | null = null;
+      if (type === 'weapon') {
+        unequippedItem = equippedWeapon;
+        setEquippedWeapon(null);
+      } else if (type === 'armor') {
+        unequippedItem = equippedArmor;
+        setEquippedArmor(null);
+      } else if (type === 'accessory') {
+        unequippedItem = equippedAccessory;
+        setEquippedAccessory(null);
+      }
+
+      if (unequippedItem) {
+        setInventory((prev) => {
+          const existingIdx = prev.findIndex((i) => i.id === unequippedItem!.id);
+          if (existingIdx >= 0) {
+            return prev.map((i, idx) => (idx === existingIdx ? { ...i, count: i.count + 1 } : i));
+          } else {
+            return [...prev, { ...unequippedItem!, count: 1 }];
+          }
+        });
+        sound.playEquip();
+      }
+    },
+    [equippedWeapon, equippedArmor, equippedAccessory]
+  );
+
+  // Auto-equip best items across all slots
+  const handleAutoEquipBest = useCallback(() => {
+    const { bestWeapon, bestArmor, bestAccessory } = findBestEquipment(
+      inventory,
+      equippedWeapon,
+      equippedArmor,
+      equippedAccessory
+    );
+
+    let changed = false;
+    let nextInv = [...inventory];
+
+    if (bestWeapon && bestWeapon.id !== equippedWeapon?.id) {
+      changed = true;
+      if (equippedWeapon) nextInv.push({ ...equippedWeapon, count: 1 });
+      nextInv = nextInv
+        .map((i) => (i.id === bestWeapon.id ? { ...i, count: i.count - 1 } : i))
+        .filter((i) => i.count > 0);
+      setEquippedWeapon({ ...bestWeapon, count: 1 });
+    }
+
+    if (bestArmor && bestArmor.id !== equippedArmor?.id) {
+      changed = true;
+      if (equippedArmor) nextInv.push({ ...equippedArmor, count: 1 });
+      nextInv = nextInv
+        .map((i) => (i.id === bestArmor.id ? { ...i, count: i.count - 1 } : i))
+        .filter((i) => i.count > 0);
+      setEquippedArmor({ ...bestArmor, count: 1 });
+    }
+
+    if (bestAccessory && bestAccessory.id !== equippedAccessory?.id) {
+      changed = true;
+      if (equippedAccessory) nextInv.push({ ...equippedAccessory, count: 1 });
+      nextInv = nextInv
+        .map((i) => (i.id === bestAccessory.id ? { ...i, count: i.count - 1 } : i))
+        .filter((i) => i.count > 0);
+      setEquippedAccessory({ ...bestAccessory, count: 1 });
+    }
+
+    if (changed) {
+      setInventory(nextInv);
+      sound.playEquip();
+      setSaveNotice('Đã tự động gắn trang bị mạnh nhất vào các ô!');
+      setTimeout(() => setSaveNotice(null), 3000);
+    } else {
+      setSaveNotice('Các ô hiện tại đã gắn trang bị tối ưu nhất!');
+      setTimeout(() => setSaveNotice(null), 3000);
+    }
+  }, [inventory, equippedWeapon, equippedArmor, equippedAccessory]);
+
+  // Upgrade Skill
+  const handleUpgradeSkill = useCallback(
+    (skillId: string) => {
+      const targetSkill = skills.find((s) => s.id === skillId);
+      if (!targetSkill) return;
+
+      if (!canUpgradeSkill(targetSkill, currentTuVi, spiritStones)) return;
+
+      setCurrentTuVi((prev) => prev - targetSkill.upgradeCostTuVi);
+      setSpiritStones((prev) => prev - targetSkill.upgradeCostStones);
+
+      setSkills((prev) =>
+        prev.map((s) => {
+          if (s.id === skillId) {
+            return upgradeSkill(s);
+          }
+          return s;
+        })
+      );
+
+      sound.playBreakthroughFanfare();
+      setSaveNotice(`Tiên Thuật [${targetSkill.vietnameseName}] đã thăng cấp thành công!`);
+      setTimeout(() => setSaveNotice(null), 3000);
+    },
+    [skills, currentTuVi, spiritStones]
+  );
+
+  // Manual & Auto Save Game
+  const handleSaveGame = useCallback(
+    (showToast: boolean = true) => {
+      try {
+        const saveData: SaveGameData = {
+          version: 1,
+          timestamp: Date.now(),
+          currentRealmId: currentRealm.id,
+          currentTuVi,
+          spiritStones,
+          rootStones,
+          cucCanhStones,
+          playerHp,
+          playerMp,
+          roots,
+          inventory,
+          equippedWeapon,
+          equippedArmor,
+          equippedAccessory,
+          skills,
+          mounts,
+          artifacts,
+          quests,
+          currentMapId: currentMap.id,
+        };
+        localStorage.setItem(SAVE_STORAGE_KEY, JSON.stringify(saveData));
+        if (showToast) {
+          sound.playEquip();
+          setSaveNotice(`Đã lưu thần thức lúc ${new Date().toLocaleTimeString()}!`);
+          setTimeout(() => setSaveNotice(null), 3000);
+        }
+      } catch (err) {
+        console.error('Lỗi khi lưu game:', err);
+      }
+    },
+    [
+      currentRealm.id,
+      currentTuVi,
+      spiritStones,
+      rootStones,
+      cucCanhStones,
+      playerHp,
+      playerMp,
+      roots,
+      inventory,
+      equippedWeapon,
+      equippedArmor,
+      equippedAccessory,
+      skills,
+      mounts,
+      artifacts,
+      quests,
+      currentMap.id,
+    ]
+  );
+
+  // Autosave interval every 12 seconds when playing
+  useEffect(() => {
+    if (gameState !== 'playing') return;
+    const interval = setInterval(() => {
+      handleSaveGame(false);
+    }, 12000);
+    return () => clearInterval(interval);
+  }, [gameState, handleSaveGame]);
 
   // Consumable Pill Use
   const handleUseConsumable = useCallback(
@@ -536,6 +798,8 @@ export default function App() {
             isMuted={isMuted}
             onToggleMute={handleToggleMute}
             onSelectMap={(map) => setCurrentMap(map)}
+            onSaveGame={() => handleSaveGame(true)}
+            saveNotice={saveNotice}
             onOpenModal={(m) => setActiveModal(m)}
           />
         </>
@@ -601,8 +865,28 @@ export default function App() {
           onClose={() => setActiveModal(null)}
           onEquipItem={handleEquipItem}
           onUnequipItem={handleUnequipItem}
+          onAutoEquipBest={handleAutoEquipBest}
+          onInspectCharacter={() => setActiveModal('character_mesh')}
           onUseConsumable={handleUseConsumable}
           onSellItem={handleSellItem}
+        />
+      )}
+
+      {activeModal === 'character_mesh' && (
+        <WangLinMeshModal
+          currentRealm={currentRealm}
+          onClose={() => setActiveModal(null)}
+        />
+      )}
+
+      {activeModal === 'skills' && (
+        <SkillsModal
+          skills={skills}
+          currentRealm={currentRealm}
+          currentTuVi={currentTuVi}
+          spiritStones={spiritStones}
+          onClose={() => setActiveModal(null)}
+          onUpgradeSkill={handleUpgradeSkill}
         />
       )}
 

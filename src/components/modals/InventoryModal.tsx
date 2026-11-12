@@ -14,6 +14,7 @@ interface InventoryModalProps {
   onEquipItem: (item: Item) => void;
   onUnequipItem: (type: 'weapon' | 'armor' | 'accessory') => void;
   onAutoEquipBest?: () => void;
+  onInspectCharacter?: () => void;
   onUseConsumable: (item: Item) => void;
   onSellItem: (item: Item, count: number) => void;
 }
@@ -29,6 +30,7 @@ export const InventoryModal: React.FC<InventoryModalProps> = ({
   onEquipItem,
   onUnequipItem,
   onAutoEquipBest,
+  onInspectCharacter,
   onUseConsumable,
   onSellItem,
 }) => {
@@ -93,19 +95,39 @@ export const InventoryModal: React.FC<InventoryModalProps> = ({
           {/* Left Column: Equipment Slots & Attribute totals */}
           <div className="md:col-span-4 space-y-4">
             {/* Character Profile Card */}
-            <div className="p-3 rounded-xl border border-sky-500/30 bg-gradient-to-r from-sky-950/40 to-slate-900/60 flex items-center gap-3">
-              <div className="w-14 h-14 rounded-xl border-2 border-amber-400/60 overflow-hidden bg-slate-950 shadow-md shrink-0">
-                <img
-                  src="/assets/aistudio/images__6__73922a53.jpg"
-                  alt="Vương Lâm"
-                  className="w-full h-full object-cover object-top"
-                />
+            <div
+              onClick={onInspectCharacter}
+              title="Nhấp để chiêm ngưỡng Thần Thái 2D Mesh Động Thái của Vương Lâm"
+              className={`p-3 rounded-xl border border-sky-500/30 bg-gradient-to-r from-sky-950/40 to-slate-900/60 flex items-center justify-between gap-3 transition-all ${
+                onInspectCharacter ? 'cursor-pointer hover:border-sky-400 hover:scale-[1.01] group' : ''
+              }`}
+            >
+              <div className="flex items-center gap-3">
+                <div className="w-14 h-14 rounded-xl border-2 border-amber-400/60 group-hover:border-sky-400 overflow-hidden bg-slate-950 shadow-md shrink-0 relative">
+                  <img
+                    src="/assets/aistudio/images__6__73922a53.jpg"
+                    alt="Vương Lâm"
+                    className="w-full h-full object-cover object-top"
+                  />
+                  <div className="absolute bottom-0 inset-x-0 bg-sky-950/90 text-center text-[7px] font-bold text-sky-200">
+                    2D MESH
+                  </div>
+                </div>
+                <div>
+                  <div className="text-sm font-bold font-serif text-amber-200 flex items-center gap-1.5">
+                    <span>Vương Lâm</span>
+                    <Sparkles className="w-3.5 h-3.5 text-sky-400 animate-pulse" />
+                  </div>
+                  <div className="text-[11px] text-sky-300">Tiên Nghịch Đạo Tôn</div>
+                  <div className="text-[10px] text-slate-400">Cực Cảnh · Thạch Châu Bản Mệnh</div>
+                </div>
               </div>
-              <div>
-                <div className="text-sm font-bold font-serif text-amber-200">Vương Lâm</div>
-                <div className="text-[11px] text-sky-300">Tiên Nghịch Đạo Tôn</div>
-                <div className="text-[10px] text-slate-400">Cực Cảnh · Thạch Châu Bản Mệnh</div>
-              </div>
+
+              {onInspectCharacter && (
+                <div className="text-[10px] px-2 py-1 rounded-md bg-sky-950/80 text-sky-300 border border-sky-800 font-semibold group-hover:bg-sky-800 group-hover:text-white transition-colors shrink-0">
+                  Soi Thần Thái
+                </div>
+              )}
             </div>
 
             {/* Equipment Slots */}

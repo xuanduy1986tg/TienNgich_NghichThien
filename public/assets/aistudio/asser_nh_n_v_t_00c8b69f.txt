@@ -1,0 +1,161 @@
+/**
+ * XianxiaMeshEngine - Standalone 2D Mesh Deformation & Parallax Engine
+ * Xuất tự động từ 2D Character Mesh Animation Studio
+ */
+class XianxiaMeshEngine {
+  constructor(config) {
+    this.canvas = document.getElementById(config.canvasId);
+    this.ctx = this.canvas.getContext('2d');
+    this.config = Object.assign({
+      gridRes: 12, maskY: 0.35, maskRadius: 0.28,
+      waveAmp: 14, waveSpeed: 1.2, waveFreq: 1.0,
+      floatHeight: 16, breathScale: 0.015, tilt: 8, particleCount: 80
+    }, config);
+
+    this.mouse = { x: 0, y: 0, targetX: 0, targetY: 0 };
+    this.img = new Image();
+    this.img.crossOrigin = 'Anonymous';
+    this.img.src = config.imageSrc;
+    
+    this.img.onload = () => {
+      this.buildMesh();
+      this.initParticles();
+      this.bindMouse();
+      requestAnimationFrame(this.animate.bind(this));
+    };
+  }
+
+  bindMouse() {
+    window.addEventListener('pointermove', (e) => {
+      const rect = this.canvas.getBoundingClientRect();
+      this.mouse.targetX = e.clientX - (rect.left + rect.width / 2);
+      this.mouse.targetY = e.clientY - (rect.top + rect.height / 2);
+    });
+  }
+
+  buildMesh() {
+    this.vertices = [];
+    this.triangles = [];
+    const rows = this.config.gridRes, cols = this.config.gridRes;
+    const w = this.canvas.width, h = this.canvas.height;
+
+    for (let r = 0; r <= rows; r++) {
+      for (let c = 0; c <= cols; c++) {
+        const u = c / cols, v = r / rows;
+        const x = u * w, y = v * h;
+        const faceX = w * 0.5, faceY = h * this.config.maskY;
+        const maskR = Math.min(w, h) * this.config.maskRadius;
+        const dist = Math.hypot(x - faceX, y - faceY);
+
+        let weight = dist > maskR ? Math.min(1, (dist - maskR) / (maskR * 1.2)) : 0;
+        weight *= Math.pow(v, 1.2);
+
+        this.vertices.push({ u, v, x, y, weight, currentX: x, currentY: y });
+      }
+    }
+
+    for (let r = 0; r < rows; r++) {
+      for (let c = 0; c < cols; c++) {
+        const i0 = r * (cols + 1) + c, i1 = i0 + 1;
+        const i2 = (r + 1) * (cols + 1) + c, i3 = i2 + 1;
+        this.triangles.push([i0, i1, i2], [i1, i3, i2]);
+      }
+    }
+  }
+
+  initParticles() {
+    this.particles = Array.from({ length: this.config.particleCount }, () => ({
+      x: Math.random() * this.canvas.width,
+      y: Math.random() * this.canvas.height,
+      speedY: -(Math.random() * 1.2 + 0.4),
+      speedX: (Math.random() - 0.5) * 0.6,
+      size: Math.random() * 2.5 + 1,
+      alpha: Math.random() * 0.8 + 0.2,
+      life: 0, maxLife: Math.random() * 150 + 80
+    }));
+  }
+
+  drawTexturedTriangle(v0, v1, v2) {
+    const ctx = this.ctx, img = this.img;
+    const w = img.width, h = img.height;
+
+    const x0 = v0.currentX, y0 = v0.currentY;
+    const x1 = v1.currentX, y1 = v1.currentY;
+    const x2 = v2.currentX, y2 = v2.currentY;
+
+    const u0 = v0.u * w, uv0 = v0.v * h;
+    const u1 = v1.u * w, uv1 = v1.v * h;
+    const u2 = v2.u * w, uv2 = v2.v * h;
+
+    ctx.save();
+    ctx.beginPath();
+    ctx.moveTo(x0, y0); ctx.lineTo(x1, y1); ctx.lineTo(x2, y2);
+    ctx.closePath(); ctx.clip();
+
+    const delta = u0 * (uv1 - uv2) - uv0 * (u1 - u2) + (u1 * uv2 - u2 * uv1);
+    if (Math.abs(delta) < 0.0001) { ctx.restore(); return; }
+
+    const a = (x0 * (uv1 - uv2) + x1 * (uv2 - uv0) + x2 * (uv0 - uv1)) / delta;
+    const b = (y0 * (uv1 - uv2) + y1 * (uv2 - uv0) + y2 * (uv0 - uv1)) / delta;
+    const c = (u0 * (x1 - x2) + u1 * (x2 - x0) + u2 * (x0 - x1)) / delta;
+    const d = (u0 * (y1 - y2) + u1 * (y2 - y0) + u2 * (y0 - y1)) / delta;
+    const e = (x0 * (u1 * uv2 - u2 * uv1) - u0 * (x1 * uv2 - x2 * uv1) + uv0 * (x1 * u2 - x2 * u1)) / delta;
+    const f = (y0 * (u1 * uv2 - u2 * uv1) - u0 * (y1 * uv2 - y2 * uv1) + uv0 * (y1 * u2 - y2 * u1)) / delta;
+
+    ctx.transform(a, b, c, d, e, f);
+    ctx.drawImage(img, 0, 0);
+    ctx.restore();
+  }
+
+  animate(time) {
+    this.mouse.x += (this.mouse.targetX - this.mouse.x) * 0.08;
+    this.mouse.y += (this.mouse.targetY - this.mouse.y) * 0.08;
+
+    const w = this.canvas.width, h = this.canvas.height;
+    this.ctx.clearRect(0, 0, w, h);
+
+    const floatY = Math.sin(time * 0.002 * this.config.waveSpeed) * this.config.floatHeight;
+    const breathScale = 1 + Math.cos(time * 0.0015 * this.config.waveSpeed) * this.config.breathScale;
+    const tiltAngle = (this.mouse.x / (w / 2)) * (this.config.tilt * Math.PI / 180);
+
+    // Update Mesh
+    this.vertices.forEach(v => {
+      const origX = v.u * w, origY = v.v * h;
+      const waveX = Math.sin(time * 0.003 * this.config.waveSpeed + v.v * 10 * this.config.waveFreq) * this.config.waveAmp * v.weight;
+      const waveY = Math.cos(time * 0.0025 * this.config.waveSpeed + v.u * 8 * this.config.waveFreq) * (this.config.waveAmp * 0.4) * v.weight;
+
+      const centerX = w * 0.5, centerY = h * this.config.maskY;
+      let px = (origX - centerX) * breathScale + centerX + waveX;
+      let py = (origY - centerY) * breathScale + centerY + floatY + waveY;
+
+      const dx = px - centerX, dy = py - centerY;
+      px = centerX + dx * Math.cos(tiltAngle) - dy * Math.sin(tiltAngle);
+      py = centerY + dx * Math.sin(tiltAngle) + dy * Math.cos(tiltAngle);
+
+      v.currentX = px; v.currentY = py;
+    });
+
+    // Draw Particles
+    this.ctx.fillStyle = '#7dd3fc';
+    this.particles.forEach(p => {
+      p.x += p.speedX + Math.sin(p.life * 0.04) * 0.3;
+      p.y += p.speedY; p.life++;
+      if (p.life > p.maxLife - 30) p.alpha *= 0.94;
+      if (p.y < -10 || p.alpha < 0.02 || p.life >= p.maxLife) {
+        p.x = Math.random() * w; p.y = h + 20; p.alpha = Math.random() * 0.8 + 0.2; p.life = 0;
+      }
+      this.ctx.save();
+      this.ctx.globalAlpha = p.alpha;
+      this.ctx.beginPath(); this.ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2); this.ctx.fill();
+      this.ctx.restore();
+    });
+
+    // Draw Mesh Triangles
+    for (let i = 0; i < this.triangles.length; i++) {
+      const tri = this.triangles[i];
+      this.drawTexturedTriangle(this.vertices[tri[0]], this.vertices[tri[1]], this.vertices[tri[2]]);
+    }
+
+    requestAnimationFrame(this.animate.bind(this));
+  }
+}
